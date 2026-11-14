@@ -39,18 +39,6 @@ Most note-taking tools force you into proprietary cloud databases or lack fast w
 
 ---
 
-## 📸 Architecture & Cross-Device Experience
-
-<p align="center">
-  <img src="./docs/images/mcp-architecture.jpg" alt="Notika Local Filesystem & MCP Server Architecture" width="100%" />
-</p>
-
-<p align="center">
-  <img src="./docs/images/responsive-showcase.jpg" alt="Notika 100% Mobile Responsive Web Application" width="100%" />
-</p>
-
----
-
 ## ✨ Feature Matrix
 
 | Capability | Description |

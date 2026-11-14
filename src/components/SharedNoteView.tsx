@@ -14,8 +14,18 @@ import {
   Type,
   UserCheck,
 } from 'lucide-react';
+import {
+  parseFrontmatter,
+  replaceFrontmatterBody,
+} from '../../shared/frontmatter.ts';
+import type { FormEvent } from 'react';
 import type { TranslationStrings } from '../i18n/translations';
-import { ApiError, fetchPublicShare, savePublicShare } from '../lib/api';
+import {
+  ApiError,
+  fetchPublicShare,
+  savePublicShare,
+  verifyPublicSharePassword,
+} from '../lib/api';
 import { toggleTaskAtLineInMarkdown } from '../lib/richMarkdown';
 import type { PublicSharedNote, SaveStatus } from '../types/vault';
 import { NormalRichEditor } from './NormalRichEditor';
@@ -35,6 +45,9 @@ export function SharedNoteView({ code, t }: SharedNoteViewProps) {
   const [notFoundError, setNotFoundError] = useState<string | null>(null);
   const [tab, setTab] = useState<ShareViewTab>('preview');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  const [unlockPassword, setUnlockPassword] = useState('');
+  const [unlockBusy, setUnlockBusy] = useState(false);
+  const [unlockError, setUnlockError] = useState<string | null>(null);
 
   const autosaveTimerRef = useRef<number | null>(null);
 
@@ -108,7 +121,7 @@ export function SharedNoteView({ code, t }: SharedNoteViewProps) {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#09090B] text-sm text-[#A1A1AA]">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#34D399]" />
+        <Loader2 className="mr-2 h-4 w-4 animate-spin text-accent" />
         <span>{t.loadingVault}</span>
       </div>
     );
@@ -141,8 +154,94 @@ export function SharedNoteView({ code, t }: SharedNoteViewProps) {
     );
   }
 
+  const handleUnlockShare = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!unlockPassword || unlockBusy) return;
+    setUnlockBusy(true);
+    setUnlockError(null);
+    try {
+      const unlocked = await verifyPublicSharePassword(code, unlockPassword);
+      setNote(unlocked);
+      setContent(unlocked.content);
+      setTab(unlocked.permission === 'edit' ? 'normal' : 'preview');
+      setUnlockPassword('');
+    } catch (err: unknown) {
+      setUnlockError(
+        err instanceof ApiError ? err.message : t.shareLockedDesc
+      );
+    } finally {
+      setUnlockBusy(false);
+    }
+  };
+
+  if (note.requiresPassword) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#09090B] px-4">
+        <div className="shadow-card w-full max-w-md rounded-2xl bg-[#18181B] p-2">
+          <form
+            onSubmit={handleUnlockShare}
+            className="space-y-4 rounded-xl border border-white/[0.08] bg-black p-6"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-accent/30 bg-accent/10 text-accent">
+                <Lock className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-base font-semibold text-[#FAFAFA]">
+                  {t.shareLockedTitle}
+                </h1>
+                <p className="truncate text-xs text-[#71717A]">
+                  {note.project} / {note.title}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs leading-relaxed text-[#A1A1AA]">
+              {t.shareLockedDesc}
+            </p>
+
+            <input
+              type="password"
+              autoFocus
+              value={unlockPassword}
+              onChange={(e) => setUnlockPassword(e.target.value)}
+              placeholder={t.notePasswordPlaceholder}
+              aria-label={t.notePasswordPlaceholder}
+              className="h-10 w-full rounded-lg border border-white/[0.1] bg-[#111113] px-3 text-sm text-[#FAFAFA] placeholder-[#71717A] outline-none focus:border-accent"
+            />
+
+            {unlockError && (
+              <div
+                role="alert"
+                className="flex items-center gap-2 rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs text-rose-300"
+              >
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{unlockError}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={unlockBusy || !unlockPassword}
+              className="btn-primary-tactile flex h-10 w-full items-center justify-center gap-2 rounded-lg text-sm font-medium disabled:opacity-50"
+            >
+              {unlockBusy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Lock className="h-4 w-4" />
+              )}
+              <span>{t.unlockShareButton}</span>
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   const isPlainText = note.note.toLowerCase().endsWith('.txt');
   const canEdit = note.permission === 'edit';
+  const parsedFrontmatter = isPlainText ? null : parseFrontmatter(content);
+  const displayBody = parsedFrontmatter ? parsedFrontmatter.body : content;
 
   return (
     <div className="flex min-h-screen flex-col bg-[#09090B] text-[#FAFAFA]">
@@ -153,7 +252,7 @@ export function SharedNoteView({ code, t }: SharedNoteViewProps) {
               href="/"
               className="flex items-center gap-2 text-[#FAFAFA] hover:opacity-85"
             >
-              <NotikaLogo className="h-7 w-7 text-[#34D399]" />
+              <NotikaLogo className="h-7 w-7 text-accent" />
               <span className="text-base font-semibold">Notika</span>
             </a>
             <span className="text-[#52525B]" aria-hidden="true">
@@ -224,7 +323,7 @@ export function SharedNoteView({ code, t }: SharedNoteViewProps) {
                   onClick={() => setTab('normal')}
                   className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
                     tab === 'normal'
-                      ? 'bg-black text-[#34D399]'
+                      ? 'bg-black text-accent'
                       : 'text-[#A1A1AA] hover:text-white'
                   }`}
                 >
@@ -236,7 +335,7 @@ export function SharedNoteView({ code, t }: SharedNoteViewProps) {
                   onClick={() => setTab('editor')}
                   className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
                     tab === 'editor'
-                      ? 'bg-black text-[#34D399]'
+                      ? 'bg-black text-accent'
                       : 'text-[#A1A1AA] hover:text-white'
                   }`}
                 >
@@ -248,7 +347,7 @@ export function SharedNoteView({ code, t }: SharedNoteViewProps) {
                   onClick={() => setTab('preview')}
                   className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
                     tab === 'preview'
-                      ? 'bg-black text-[#34D399]'
+                      ? 'bg-black text-accent'
                       : 'text-[#A1A1AA] hover:text-white'
                   }`}
                 >
@@ -264,10 +363,16 @@ export function SharedNoteView({ code, t }: SharedNoteViewProps) {
               <div className="w-full">
                 <NormalRichEditor
                   noteKey={`share/${code}`}
-                  content={content}
+                  content={displayBody}
                   isPlainText={isPlainText}
                   t={t}
-                  onChangeContent={handleContentChange}
+                  onChangeContent={(nextBody) =>
+                    handleContentChange(
+                      isPlainText
+                        ? nextBody
+                        : replaceFrontmatterBody(content, nextBody)
+                    )
+                  }
                 />
               </div>
             ) : canEdit && tab === 'editor' ? (
@@ -299,8 +404,13 @@ export function SharedNoteView({ code, t }: SharedNoteViewProps) {
                               checked={Boolean(checked)}
                               onChange={() => {
                                 if (canEdit && typeof line === 'number') {
+                                  const toggledBody =
+                                    toggleTaskAtLineInMarkdown(
+                                      displayBody,
+                                      line
+                                    );
                                   handleContentChange(
-                                    toggleTaskAtLineInMarkdown(content, line)
+                                    replaceFrontmatterBody(content, toggledBody)
                                   );
                                 }
                               }}
@@ -312,7 +422,7 @@ export function SharedNoteView({ code, t }: SharedNoteViewProps) {
                       },
                     }}
                   >
-                    {content}
+                    {displayBody}
                   </ReactMarkdown>
                 )}
               </article>

@@ -1,6 +1,24 @@
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
+import {
+  extractNoteAppearance,
+  extractTagsFromMarkdown,
+  isFrontmatterPinned,
+  setFrontmatterAppearance,
+  setFrontmatterPinned,
+} from '../shared/frontmatter.ts';
+import {
+  normalizeNoteColorId,
+  normalizeNoteIconId,
+  type NoteColorId,
+  type NoteIconId,
+} from '../shared/noteAppearance.ts';
+import { listLockedNoteKeys, makeNoteKey } from './locks.ts';
+import {
+  readProjectAppearanceMap,
+  setProjectAppearance,
+} from './projectMeta.ts';
 import type {
   NoteDocument,
   NoteMeta,
@@ -195,6 +213,13 @@ export function validateSafeName(rawName: unknown, kind: 'project' | 'note'): st
     throw new VaultError('Bu isim sistem tarafından rezerve edilmiştir.', 400);
   }
 
+  if (kind === 'project' && normalized.toLowerCase() === 'templates') {
+    throw new VaultError(
+      '"templates" klasör adı şablonlar için ayrılmıştır.',
+      400
+    );
+  }
+
   return kind === 'note' ? `${normalized}${noteExt}` : normalized;
 }
 
@@ -273,10 +298,16 @@ function stripMdExtension(fileName: string): string {
 export async function listVaultTree(dataDir: string): Promise<ProjectTreeItem[]> {
   await fs.mkdir(dataDir, { recursive: true });
   const entries = await fs.readdir(dataDir, { withFileTypes: true });
+  const lockedKeys = await listLockedNoteKeys(dataDir);
+  const projectAppearances = await readProjectAppearanceMap(dataDir);
   const projects: ProjectTreeItem[] = [];
 
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith('.')) {
+    if (
+      !entry.isDirectory() ||
+      entry.name.startsWith('.') ||
+      entry.name.toLowerCase() === 'templates'
+    ) {
       continue;
     }
 
@@ -299,6 +330,29 @@ export async function listVaultTree(dataDir: string): Promise<ProjectTreeItem[]>
       const notePath = path.resolve(projectPath, noteEntry.name);
       assertInsideRoot(projectPath, notePath);
       const stat = await fs.stat(notePath);
+      const locked = lockedKeys.has(makeNoteKey(entry.name, noteEntry.name));
+
+      let tags: string[] | undefined;
+      let pinned = false;
+      let icon: NoteIconId | undefined;
+      let color: NoteColorId | undefined;
+      if (!locked) {
+        try {
+          const raw = await fs.readFile(notePath, 'utf8');
+          pinned = isFrontmatterPinned(raw);
+          const appearance = extractNoteAppearance(raw);
+          icon = appearance.icon;
+          color = appearance.color;
+          if (noteEntry.name.toLowerCase().endsWith('.md')) {
+            const extracted = extractTagsFromMarkdown(raw);
+            if (extracted.length > 0) {
+              tags = extracted;
+            }
+          }
+        } catch {
+          // Ignore individual read error during tree scan
+        }
+      }
 
       notes.push({
         name: noteEntry.name,
@@ -306,6 +360,11 @@ export async function listVaultTree(dataDir: string): Promise<ProjectTreeItem[]>
         project: entry.name,
         updatedAt: stat.mtime.toISOString(),
         size: stat.size,
+        ...(tags ? { tags } : {}),
+        ...(pinned ? { pinned: true } : {}),
+        ...(icon ? { icon } : {}),
+        ...(color ? { color } : {}),
+        ...(locked ? { isLocked: true } : {}),
       });
     }
 
@@ -315,10 +374,13 @@ export async function listVaultTree(dataDir: string): Promise<ProjectTreeItem[]>
       return note.updatedAt > latest ? note.updatedAt : latest;
     }, dirStat.mtime.toISOString());
 
+    const projAppearance = projectAppearances[entry.name];
     projects.push({
       name: entry.name,
       noteCount: notes.length,
       updatedAt: latestNoteUpdate,
+      ...(projAppearance?.icon ? { icon: projAppearance.icon } : {}),
+      ...(projAppearance?.color ? { color: projAppearance.color } : {}),
       notes,
     });
   }
@@ -329,7 +391,8 @@ export async function listVaultTree(dataDir: string): Promise<ProjectTreeItem[]>
 
 export async function createProject(
   dataDir: string,
-  rawName: unknown
+  rawName: unknown,
+  rawAppearance?: { icon?: unknown; color?: unknown }
 ): Promise<ProjectTreeItem> {
   const { projectName, projectPath } = await resolveProjectPath(dataDir, rawName);
 
@@ -345,11 +408,68 @@ export async function createProject(
   await fs.mkdir(projectPath, { recursive: false });
   const stat = await fs.stat(projectPath);
 
+  const icon = normalizeNoteIconId(rawAppearance?.icon);
+  const color = normalizeNoteColorId(rawAppearance?.color);
+  if (icon !== undefined || color !== undefined) {
+    await setProjectAppearance(dataDir, projectName, {
+      ...(icon !== undefined ? { icon } : {}),
+      ...(color !== undefined ? { color } : {}),
+    });
+  }
+
   return {
     name: projectName,
     noteCount: 0,
     updatedAt: stat.mtime.toISOString(),
+    ...(icon ? { icon } : {}),
+    ...(color ? { color } : {}),
     notes: [],
+  };
+}
+
+export async function updateProjectAppearance(
+  dataDir: string,
+  rawProject: unknown,
+  rawIcon: unknown,
+  rawColor: unknown
+): Promise<{ name: string; icon?: NoteIconId; color?: NoteColorId }> {
+  const { projectName, projectPath } = await resolveProjectPath(
+    dataDir,
+    rawProject
+  );
+
+  try {
+    const stat = await fs.stat(projectPath);
+    if (!stat.isDirectory()) {
+      throw new VaultError('Proje klasörü bulunamadı.', 404);
+    }
+  } catch (err: unknown) {
+    if (err instanceof VaultError) throw err;
+    throw new VaultError('Proje klasörü bulunamadı.', 404);
+  }
+
+  const nextIcon =
+    rawIcon === undefined
+      ? undefined
+      : rawIcon === null
+        ? null
+        : (normalizeNoteIconId(rawIcon) ?? null);
+  const nextColor =
+    rawColor === undefined
+      ? undefined
+      : rawColor === null
+        ? null
+        : (normalizeNoteColorId(rawColor) ?? null);
+
+  const saved = await setProjectAppearance(dataDir, projectName, {
+    icon: nextIcon,
+    color: nextColor,
+  });
+
+  return {
+    name: projectName,
+    ...(saved.icon ? { icon: saved.icon } : {}),
+    ...(saved.color ? { color: saved.color } : {}),
   };
 }
 
@@ -422,6 +542,8 @@ export async function readNote(
       throw new VaultError('Not dosyası bulunamadı.', 404);
     }
     const content = await fs.readFile(notePath, 'utf8');
+    const pinned = isFrontmatterPinned(content);
+    const { icon, color } = extractNoteAppearance(content);
     return {
       project: projectName,
       name: noteName,
@@ -429,6 +551,9 @@ export async function readNote(
       content,
       updatedAt: stat.mtime.toISOString(),
       size: stat.size,
+      ...(pinned ? { pinned: true } : {}),
+      ...(icon ? { icon } : {}),
+      ...(color ? { color } : {}),
     };
   } catch (err: unknown) {
     if (err instanceof VaultError) throw err;
@@ -440,7 +565,8 @@ export async function createNote(
   dataDir: string,
   rawProject: unknown,
   rawNote: unknown,
-  initialContent?: unknown
+  initialContent?: unknown,
+  rawAppearance?: { icon?: unknown; color?: unknown }
 ): Promise<NoteDocument> {
   const { projectName, noteName, projectPath, notePath } = await resolveNotePath(
     dataDir,
@@ -467,15 +593,26 @@ export async function createNote(
 
   const title = stripMdExtension(noteName);
   const isTxt = noteName.toLowerCase().endsWith('.txt');
-  const content =
+  let content =
     typeof initialContent === 'string'
       ? initialContent
       : isTxt
         ? `${title}\n\n`
         : `# ${title}\n\n`;
 
+  const icon = normalizeNoteIconId(rawAppearance?.icon);
+  const color = normalizeNoteColorId(rawAppearance?.color);
+
+  if (!isTxt && (icon !== undefined || color !== undefined)) {
+    content = setFrontmatterAppearance(content, {
+      ...(icon !== undefined ? { icon } : {}),
+      ...(color !== undefined ? { color } : {}),
+    });
+  }
+
   await fs.writeFile(notePath, content, 'utf8');
   const stat = await fs.stat(notePath);
+  const parsedAppearance = extractNoteAppearance(content);
 
   return {
     project: projectName,
@@ -484,6 +621,8 @@ export async function createNote(
     content,
     updatedAt: stat.mtime.toISOString(),
     size: stat.size,
+    ...(parsedAppearance.icon ? { icon: parsedAppearance.icon } : {}),
+    ...(parsedAppearance.color ? { color: parsedAppearance.color } : {}),
   };
 }
 
@@ -515,6 +654,8 @@ export async function saveNote(
 
   await fs.writeFile(notePath, content, 'utf8');
   const stat = await fs.stat(notePath);
+  const pinned = isFrontmatterPinned(content);
+  const { icon, color } = extractNoteAppearance(content);
 
   return {
     project: projectName,
@@ -523,6 +664,123 @@ export async function saveNote(
     content,
     updatedAt: stat.mtime.toISOString(),
     size: stat.size,
+    ...(pinned ? { pinned: true } : {}),
+    ...(icon ? { icon } : {}),
+    ...(color ? { color } : {}),
+  };
+}
+
+export async function setNotePinned(
+  dataDir: string,
+  rawProject: unknown,
+  rawNote: unknown,
+  pinned: boolean
+): Promise<{ meta: NoteMeta; content: string }> {
+  const { projectName, noteName, notePath } = await resolveNotePath(
+    dataDir,
+    rawProject,
+    rawNote
+  );
+
+  try {
+    const stat = await fs.stat(notePath);
+    if (!stat.isFile()) {
+      throw new VaultError('Not dosyası bulunamadı.', 404);
+    }
+  } catch (err: unknown) {
+    if (err instanceof VaultError) throw err;
+    throw new VaultError('Not dosyası bulunamadı.', 404);
+  }
+
+  const currentContent = await fs.readFile(notePath, 'utf8');
+  const nextContent = setFrontmatterPinned(currentContent, pinned);
+  await fs.writeFile(notePath, nextContent, 'utf8');
+
+  const stat = await fs.stat(notePath);
+  const extractedTags = noteName.toLowerCase().endsWith('.md')
+    ? extractTagsFromMarkdown(nextContent)
+    : [];
+  const { icon, color } = extractNoteAppearance(nextContent);
+
+  return {
+    meta: {
+      name: noteName,
+      title: stripMdExtension(noteName),
+      project: projectName,
+      updatedAt: stat.mtime.toISOString(),
+      size: stat.size,
+      ...(extractedTags.length > 0 ? { tags: extractedTags } : {}),
+      ...(pinned ? { pinned: true } : {}),
+      ...(icon ? { icon } : {}),
+      ...(color ? { color } : {}),
+    },
+    content: nextContent,
+  };
+}
+
+export async function setNoteAppearance(
+  dataDir: string,
+  rawProject: unknown,
+  rawNote: unknown,
+  rawIcon: unknown,
+  rawColor: unknown
+): Promise<{ meta: NoteMeta; content: string }> {
+  const { projectName, noteName, notePath } = await resolveNotePath(
+    dataDir,
+    rawProject,
+    rawNote
+  );
+
+  try {
+    const stat = await fs.stat(notePath);
+    if (!stat.isFile()) {
+      throw new VaultError('Not dosyası bulunamadı.', 404);
+    }
+  } catch (err: unknown) {
+    if (err instanceof VaultError) throw err;
+    throw new VaultError('Not dosyası bulunamadı.', 404);
+  }
+
+  const currentContent = await fs.readFile(notePath, 'utf8');
+  const nextIcon =
+    rawIcon === undefined
+      ? undefined
+      : rawIcon === null
+        ? null
+        : (normalizeNoteIconId(rawIcon) ?? null);
+  const nextColor =
+    rawColor === undefined
+      ? undefined
+      : rawColor === null
+        ? null
+        : (normalizeNoteColorId(rawColor) ?? null);
+
+  const nextContent = setFrontmatterAppearance(currentContent, {
+    ...(nextIcon !== undefined ? { icon: nextIcon } : {}),
+    ...(nextColor !== undefined ? { color: nextColor } : {}),
+  });
+  await fs.writeFile(notePath, nextContent, 'utf8');
+
+  const stat = await fs.stat(notePath);
+  const extractedTags = noteName.toLowerCase().endsWith('.md')
+    ? extractTagsFromMarkdown(nextContent)
+    : [];
+  const pinned = isFrontmatterPinned(nextContent);
+  const appearance = extractNoteAppearance(nextContent);
+
+  return {
+    meta: {
+      name: noteName,
+      title: stripMdExtension(noteName),
+      project: projectName,
+      updatedAt: stat.mtime.toISOString(),
+      size: stat.size,
+      ...(extractedTags.length > 0 ? { tags: extractedTags } : {}),
+      ...(pinned ? { pinned: true } : {}),
+      ...(appearance.icon ? { icon: appearance.icon } : {}),
+      ...(appearance.color ? { color: appearance.color } : {}),
+    },
+    content: nextContent,
   };
 }
 
@@ -563,6 +821,63 @@ export async function renameNote(
     project: next.projectName,
     updatedAt: stat.mtime.toISOString(),
     size: stat.size,
+  };
+}
+
+export async function moveNote(
+  dataDir: string,
+  rawFromProject: unknown,
+  rawNote: unknown,
+  rawToProject: unknown
+): Promise<NoteMeta> {
+  const source = await resolveNotePath(dataDir, rawFromProject, rawNote);
+  const dest = await resolveNotePath(dataDir, rawToProject, source.noteName);
+
+  try {
+    const srcStat = await fs.stat(source.notePath);
+    if (!srcStat.isFile()) {
+      throw new VaultError('Taşınacak not dosyası bulunamadı.', 404);
+    }
+  } catch (err: unknown) {
+    if (err instanceof VaultError) throw err;
+    throw new VaultError('Taşınacak not dosyası bulunamadı.', 404);
+  }
+
+  try {
+    const destDirStat = await fs.stat(dest.projectPath);
+    if (!destDirStat.isDirectory()) {
+      throw new VaultError('Hedef proje klasörü bulunamadı.', 404);
+    }
+  } catch (err: unknown) {
+    if (err instanceof VaultError) throw err;
+    throw new VaultError('Hedef proje klasörü bulunamadı.', 404);
+  }
+
+  if (source.projectName !== dest.projectName) {
+    try {
+      await fs.access(dest.notePath);
+      throw new VaultError(
+        `"${dest.projectName}" klasöründe "${dest.noteName}" adlı bir not zaten mevcut.`,
+        409
+      );
+    } catch (err: unknown) {
+      if (err instanceof VaultError) throw err;
+    }
+
+    await fs.rename(source.notePath, dest.notePath);
+  }
+
+  const stat = await fs.stat(dest.notePath);
+  const lockedKeys = await listLockedNoteKeys(dataDir);
+  const isLocked = lockedKeys.has(makeNoteKey(dest.projectName, dest.noteName));
+
+  return {
+    name: dest.noteName,
+    title: stripMdExtension(dest.noteName),
+    project: dest.projectName,
+    updatedAt: stat.mtime.toISOString(),
+    size: stat.size,
+    ...(isLocked ? { isLocked: true } : {}),
   };
 }
 
@@ -637,8 +952,9 @@ export async function searchNotes(
           title: note.title,
           updatedAt: note.updatedAt,
           matchType: 'title',
-          snippet: `${project.name} klasöründeki not`,
+          snippet: `${project.name}`,
           matchCount: 0,
+          ...(note.isLocked ? { isLocked: true } : {}),
         });
       }
     }
@@ -651,14 +967,30 @@ export async function searchNotes(
 
   for (const project of tree) {
     for (const note of project.notes) {
-      const notePath = path.resolve(dataDir, project.name, note.name);
-      assertInsideRoot(dataDir, notePath);
-
-      const content = await fs.readFile(notePath, 'utf8');
       const titleMatch =
         note.title.toLowerCase().includes(queryLower) ||
         project.name.toLowerCase().includes(queryLower);
 
+      if (note.isLocked) {
+        if (titleMatch) {
+          results.push({
+            project: project.name,
+            name: note.name,
+            title: note.title,
+            updatedAt: note.updatedAt,
+            matchType: 'title',
+            snippet: `${project.name} / ${note.title}`,
+            matchCount: 1,
+            isLocked: true,
+          });
+        }
+        continue;
+      }
+
+      const notePath = path.resolve(dataDir, project.name, note.name);
+      assertInsideRoot(dataDir, notePath);
+
+      const content = await fs.readFile(notePath, 'utf8');
       const { snippet, matchCount } = buildSnippet(content, queryLower);
       const contentMatch = matchCount > 0;
 

@@ -1,8 +1,14 @@
+@layer epr, theme, base, components, utilities;
 @import "tailwindcss";
 @import "highlight.js/styles/github-dark-dimmed.css";
 
+@theme inline {
+  --color-accent: var(--primary);
+}
+
 @layer base {
-  :root {
+  :root,
+  html[data-accent="emerald"] {
     color-scheme: dark;
     --background: #09090b;
     --foreground: #fafafa;
@@ -11,10 +17,52 @@
     --muted-foreground: #a1a1aa;
     --border: rgba(255, 255, 255, 0.1);
     --primary: #34d399;
+    --primary-hover: #22c55e;
     --primary-foreground: #052e16;
+    --primary-soft: rgba(52, 211, 153, 0.45);
     --chart-1: #34d399;
     --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  html[data-accent="sky"] {
+    --primary: #38bdf8;
+    --primary-hover: #0ea5e9;
+    --primary-foreground: #082f49;
+    --primary-soft: rgba(56, 189, 248, 0.45);
+    --chart-1: #38bdf8;
+  }
+
+  html[data-accent="violet"] {
+    --primary: #a78bfa;
+    --primary-hover: #8b5cf6;
+    --primary-foreground: #2e1065;
+    --primary-soft: rgba(167, 139, 250, 0.45);
+    --chart-1: #a78bfa;
+  }
+
+  html[data-accent="amber"] {
+    --primary: #fbbf24;
+    --primary-hover: #f59e0b;
+    --primary-foreground: #451a03;
+    --primary-soft: rgba(251, 191, 36, 0.45);
+    --chart-1: #fbbf24;
+  }
+
+  html[data-accent="rose"] {
+    --primary: #fb7185;
+    --primary-hover: #f43f5e;
+    --primary-foreground: #4c0519;
+    --primary-soft: rgba(251, 113, 133, 0.45);
+    --chart-1: #fb7185;
+  }
+
+  html[data-accent="indigo"] {
+    --primary: #818cf8;
+    --primary-hover: #6366f1;
+    --primary-foreground: #1e1b4b;
+    --primary-soft: rgba(129, 140, 248, 0.45);
+    --chart-1: #818cf8;
   }
 
   html,
@@ -55,14 +103,14 @@
 
 .btn-primary-tactile {
   background-color: var(--primary);
-  color: #052e16;
+  color: var(--primary-foreground);
   box-shadow:
     inset 0 1px 6px 2px rgba(255, 255, 255, 0.25),
     inset 0 -1px 6px 2px rgba(0, 0, 0, 0.18);
 }
 
 .btn-primary-tactile:hover {
-  background-color: #22c55e;
+  background-color: var(--primary-hover);
 }
 
 .badge-bevel {
@@ -128,16 +176,16 @@
 }
 
 .markdown-preview a {
-  color: #34d399;
+  color: var(--primary);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: rgba(52, 211, 153, 0.45);
+  text-decoration-color: var(--primary-soft);
   transition: color 150ms ease, text-decoration-color 150ms ease;
 }
 
 .markdown-preview a:hover {
-  color: #6ee7b7;
-  text-decoration-color: rgba(110, 231, 183, 0.85);
+  color: var(--primary-hover);
+  text-decoration-color: var(--primary);
 }
 
 .markdown-preview ul,
@@ -178,7 +226,7 @@
   margin-top: 0.32rem;
   width: 0.95rem;
   height: 0.95rem;
-  accent-color: #34d399;
+  accent-color: var(--primary);
   border-radius: 3px;
   flex-shrink: 0;
 }
@@ -270,3 +318,37 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   margin: 1rem 0;
 }
+
+html.a11y-focus-ring *:focus-visible {
+  outline: 2px solid var(--primary) !important;
+  outline-offset: 2px !important;
+}
+
+html.a11y-reduced-motion *,
+html.a11y-reduced-motion *::before,
+html.a11y-reduced-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+.notika-emoji-picker .EmojiPickerReact {
+  --epr-bg-color: #111113;
+  --epr-category-label-bg-color: #111113;
+  --epr-text-color: #e4e4e7;
+  --epr-search-input-bg-color: #18181b;
+  --epr-search-input-bg-color-active: #18181b;
+  --epr-search-border-color: rgba(255, 255, 255, 0.12);
+  --epr-search-border-color-active: var(--primary);
+  --epr-hover-bg-color: rgba(255, 255, 255, 0.08);
+  --epr-focus-bg-color: rgba(255, 255, 255, 0.12);
+  --epr-highlight-color: var(--primary);
+  --epr-picker-border-color: rgba(255, 255, 255, 0.1);
+  --epr-picker-border-radius: 10px;
+  --epr-category-icon-active-color: var(--primary);
+  --epr-skin-tone-picker-menu-color: #18181b;
+  font-family: var(--font-sans);
+}
+
+

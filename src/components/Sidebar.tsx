@@ -10,17 +10,25 @@ import {
   FolderOpen,
   FolderPlus,
   LayoutGrid,
+  Lock,
   LogOut,
+  Palette,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
+  Pin,
   Search,
   Settings,
   Trash2,
   X,
 } from 'lucide-react';
 import type { TranslationStrings } from '../i18n/translations';
-import type { ActiveNoteRef, ProjectTreeItem } from '../types/vault';
+import type {
+  ActiveNoteRef,
+  NoteMeta,
+  ProjectTreeItem,
+} from '../types/vault';
+import { NoteIconGlyph, getNoteColorStyle } from './NoteIconDisplay';
 import { NotikaLogo } from './NotikaLogo';
 
 interface SidebarProps {
@@ -30,25 +38,37 @@ interface SidebarProps {
   collapsed: boolean;
   mobileOpen: boolean;
   authEnabled: boolean;
-  creatingProjectTrigger: number;
-  creatingNoteProject: string | null;
+  showTags: boolean;
   t: TranslationStrings;
   onCloseMobile: () => void;
-  onClearCreatingNoteProject: () => void;
   onToggleCollapse: () => void;
   onSelectOverview: () => void;
   onSelectNote: (noteRef: ActiveNoteRef) => void;
-  onCreateProject: (name: string) => Promise<boolean>;
+  onRequestNewProject: () => void;
   onRenameProject: (oldName: string, newName: string) => Promise<boolean>;
   onRequestDeleteProject: (projectName: string) => void;
-  onCreateNote: (projectName: string, noteName: string) => Promise<boolean>;
+  onRequestNewNote: (projectName: string) => void;
   onRenameNote: (
     projectName: string,
     oldNoteName: string,
     newNoteName: string
   ) => Promise<boolean>;
+  onMoveNote: (
+    fromProject: string,
+    noteName: string,
+    toProject: string
+  ) => Promise<void>;
+  onTogglePinNote: (
+    projectName: string,
+    noteName: string,
+    pinned: boolean
+  ) => Promise<void>;
+  onCustomizeNoteAppearance: (note: NoteMeta) => void;
+  onCustomizeProjectAppearance: (project: ProjectTreeItem) => void;
   onRequestDeleteNote: (projectName: string, noteName: string) => void;
+  trashCount: number;
   onOpenQuickSearch: () => void;
+  onOpenTrash: () => void;
   onOpenSettings: () => void;
   onLogout: () => void;
 }
@@ -65,21 +85,25 @@ export function Sidebar({
   collapsed,
   mobileOpen,
   authEnabled,
-  creatingProjectTrigger,
-  creatingNoteProject,
+  showTags,
   t,
   onCloseMobile,
-  onClearCreatingNoteProject,
   onToggleCollapse,
   onSelectOverview,
   onSelectNote,
-  onCreateProject,
+  onRequestNewProject,
   onRenameProject,
   onRequestDeleteProject,
-  onCreateNote,
+  onRequestNewNote,
   onRenameNote,
+  onMoveNote,
+  onTogglePinNote,
+  onCustomizeNoteAppearance,
+  onCustomizeProjectAppearance,
   onRequestDeleteNote,
+  trashCount,
   onOpenQuickSearch,
+  onOpenTrash,
   onOpenSettings,
   onLogout,
 }: SidebarProps) {
@@ -87,16 +111,13 @@ export function Sidebar({
     Record<string, boolean>
   >({});
   const [filterText, setFilterText] = useState('');
-
-  const [showNewProjectForm, setShowNewProjectForm] = useState(false);
-  const [newProjectName, setNewProjectName] = useState('');
-  const newProjectInputRef = useRef<HTMLInputElement>(null);
-
-  const [newNoteTargetProject, setNewNoteTargetProject] = useState<
-    string | null
-  >(null);
-  const [newNoteName, setNewNoteName] = useState('');
-  const newNoteInputRef = useRef<HTMLInputElement>(null);
+  const [draggedNote, setDraggedNote] = useState<{
+    project: string;
+    name: string;
+  } | null>(null);
+  const [dropTargetProject, setDropTargetProject] = useState<string | null>(
+    null
+  );
 
   const [editingTarget, setEditingTarget] = useState<EditingTarget>(null);
   const [editingValue, setEditingValue] = useState('');
@@ -124,37 +145,6 @@ export function Sidebar({
   }, [projects, activeNote]);
 
   useEffect(() => {
-    if (creatingProjectTrigger > 0) {
-      setShowNewProjectForm(true);
-      setNewProjectName('');
-    }
-  }, [creatingProjectTrigger]);
-
-  useEffect(() => {
-    if (creatingNoteProject) {
-      setExpandedProjects((prev) => ({
-        ...prev,
-        [creatingNoteProject]: true,
-      }));
-      setNewNoteTargetProject(creatingNoteProject);
-      setNewNoteName('');
-      onClearCreatingNoteProject();
-    }
-  }, [creatingNoteProject, onClearCreatingNoteProject]);
-
-  useEffect(() => {
-    if (showNewProjectForm) {
-      newProjectInputRef.current?.focus();
-    }
-  }, [showNewProjectForm]);
-
-  useEffect(() => {
-    if (newNoteTargetProject) {
-      newNoteInputRef.current?.focus();
-    }
-  }, [newNoteTargetProject]);
-
-  useEffect(() => {
     if (editingTarget) {
       editInputRef.current?.focus();
       editInputRef.current?.select();
@@ -166,33 +156,6 @@ export function Sidebar({
       ...prev,
       [projectName]: !prev[projectName],
     }));
-  };
-
-  const handleSubmitNewProject = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const trimmed = newProjectName.trim();
-    if (!trimmed) return;
-    const ok = await onCreateProject(trimmed);
-    if (ok) {
-      setExpandedProjects((prev) => ({ ...prev, [trimmed]: true }));
-      setNewProjectName('');
-      setShowNewProjectForm(false);
-    }
-  };
-
-  const handleSubmitNewNote = async (
-    event: FormEvent<HTMLFormElement>,
-    projectName: string
-  ) => {
-    event.preventDefault();
-    const trimmed = newNoteName.trim();
-    if (!trimmed) return;
-    const ok = await onCreateNote(projectName, trimmed);
-    if (ok) {
-      setNewNoteName('');
-      setNewNoteTargetProject(null);
-      onCloseMobile();
-    }
   };
 
   const handleSubmitRename = async (event: FormEvent<HTMLFormElement>) => {
@@ -239,8 +202,15 @@ export function Sidebar({
       const projectMatches = project.name
         .toLowerCase()
         .includes(normalizedFilter);
-      const matchingNotes = project.notes.filter((note) =>
-        note.title.toLowerCase().includes(normalizedFilter)
+      const strippedFilter = normalizedFilter.startsWith('#')
+        ? normalizedFilter.slice(1)
+        : normalizedFilter;
+      const matchingNotes = project.notes.filter(
+        (note) =>
+          note.title.toLowerCase().includes(normalizedFilter) ||
+          (note.tags ?? []).some((tag) =>
+            tag.toLowerCase().includes(strippedFilter)
+          )
       );
 
       if (projectMatches) {
@@ -255,6 +225,23 @@ export function Sidebar({
       return null;
     })
     .filter((item): item is ProjectTreeItem => item !== null);
+
+  const pinnedNotes: NoteMeta[] = projects
+    .flatMap((project) => project.notes)
+    .filter((note) => {
+      if (!note.pinned) return false;
+      if (normalizedFilter.length === 0) return true;
+      const strippedFilter = normalizedFilter.startsWith('#')
+        ? normalizedFilter.slice(1)
+        : normalizedFilter;
+      return (
+        note.title.toLowerCase().includes(normalizedFilter) ||
+        note.project.toLowerCase().includes(normalizedFilter) ||
+        (note.tags ?? []).some((tag) =>
+          tag.toLowerCase().includes(strippedFilter)
+        )
+      );
+    });
 
   if (collapsed && !mobileOpen) {
     return (
@@ -279,7 +266,7 @@ export function Sidebar({
             aria-label={t.overview}
             className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
               activeView === 'overview'
-                ? 'bg-[#1F1F23] text-[#34D399]'
+                ? 'bg-[#1F1F23] text-accent'
                 : 'text-[#A1A1AA] hover:bg-[#1A1A1E] hover:text-white'
             }`}
           >
@@ -322,7 +309,7 @@ export function Sidebar({
                 }}
                 className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
                   isProjectActive
-                    ? 'bg-[#1F1F23] text-[#34D399]'
+                    ? 'bg-[#1F1F23] text-accent'
                     : 'text-[#A1A1AA] hover:bg-[#1A1A1E] hover:text-white'
                 }`}
               >
@@ -337,10 +324,25 @@ export function Sidebar({
         <div className="flex flex-col items-center gap-1.5">
           <button
             type="button"
+            onClick={onOpenTrash}
+            title={
+              trashCount > 0 ? `${t.trash} (${trashCount})` : t.trash
+            }
+            aria-label={t.trash}
+            className="relative flex h-9 w-9 items-center justify-center rounded-lg text-[#A1A1AA] transition-colors hover:bg-[#1A1A1E] hover:text-white"
+          >
+            <Trash2 className="h-4 w-4" />
+            {trashCount > 0 && (
+              <span className="bg-accent absolute top-1.5 end-1.5 h-1.5 w-1.5 rounded-full" />
+            )}
+          </button>
+
+          <button
+            type="button"
             onClick={onOpenSettings}
             title={t.settings}
             aria-label={t.settings}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-[#A1A1AA] transition-colors hover:bg-[#1A1A1E] hover:text-[#34D399]"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-[#A1A1AA] transition-colors hover:bg-[#1A1A1E] hover:text-accent"
           >
             <Settings className="h-4 w-4" />
           </button>
@@ -386,7 +388,7 @@ export function Sidebar({
             }}
             className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 text-left transition-colors hover:bg-[#1A1A1E]"
           >
-            <NotikaLogo className="h-7 w-7 shrink-0 text-[#34D399]" />
+            <NotikaLogo className="h-7 w-7 shrink-0 text-accent" />
             <span className="truncate text-lg font-semibold tracking-tight text-[#FAFAFA]">
               Notika
             </span>
@@ -431,7 +433,7 @@ export function Sidebar({
           >
             <LayoutGrid
               className={`h-4 w-4 ${
-                activeView === 'overview' ? 'text-[#34D399]' : ''
+                activeView === 'overview' ? 'text-accent' : ''
               }`}
             />
             <span>{t.overview}</span>
@@ -453,6 +455,25 @@ export function Sidebar({
               ⌘K
             </span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              onCloseMobile();
+              onOpenTrash();
+            }}
+            className="flex h-10 w-full items-center justify-between rounded-lg px-3 text-sm font-medium text-[#A1A1AA] transition-colors hover:bg-[#18181B] hover:text-white"
+          >
+            <span className="flex items-center gap-3">
+              <Trash2 className="h-4 w-4" />
+              <span>{t.trash}</span>
+            </span>
+            {trashCount > 0 && (
+              <span className="rounded bg-white/[0.08] px-1.5 py-0.5 text-[11px] font-medium text-[#E4E4E7] tabular-nums">
+                {trashCount}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* Navigation Group 2: Projects */}
@@ -464,8 +485,8 @@ export function Sidebar({
             <button
               type="button"
               onClick={() => {
-                setShowNewProjectForm(true);
-                setNewProjectName('');
+                onCloseMobile();
+                onRequestNewProject();
               }}
               title={t.newProject}
               aria-label={t.newProject}
@@ -476,7 +497,7 @@ export function Sidebar({
             </button>
           </div>
 
-          <div className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-[#18181B] px-2.5 py-2 focus-within:border-[#34D399]">
+          <div className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-[#18181B] px-2.5 py-2 focus-within:border-accent">
             <Search className="h-3.5 w-3.5 shrink-0 text-[#71717A]" />
             <input
               type="text"
@@ -498,56 +519,85 @@ export function Sidebar({
           </div>
         </div>
 
-        {showNewProjectForm && (
-          <form
-            onSubmit={handleSubmitNewProject}
-            className="mx-3 mb-2 rounded-xl border border-white/[0.08] bg-[#18181B] p-2.5"
-          >
-            <label
-              htmlFor="new-project-name"
-              className="block text-[11px] font-medium text-[#A1A1AA]"
-            >
-              {t.newProjectFolder}
-            </label>
-            <div className="mt-1.5 flex items-center gap-1.5">
-              <input
-                id="new-project-name"
-                ref={newProjectInputRef}
-                type="text"
-                value={newProjectName}
-                onChange={(event) => setNewProjectName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape') {
-                    setShowNewProjectForm(false);
-                  }
-                }}
-                placeholder={t.projectNamePlaceholder}
-                className="h-9 w-full rounded-md border border-white/[0.1] bg-black px-2.5 text-xs text-white placeholder-[#71717A] outline-none focus:border-[#34D399]"
-              />
-              <button
-                type="submit"
-                aria-label={t.newProject}
-                className="btn-primary-tactile flex h-9 w-9 shrink-0 items-center justify-center rounded-md"
-              >
-                <Check className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowNewProjectForm(false)}
-                aria-label={t.cancel}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-white/[0.1] bg-[#1F1F23] text-[#A1A1AA] hover:text-white"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </form>
-        )}
-
         {/* Project & Note Tree */}
         <nav
           aria-label={t.projects}
           className="flex-1 overflow-y-auto px-3 pb-3"
         >
+          {/* Pinned Notes Section */}
+          {pinnedNotes.length > 0 && (
+            <div className="mb-3">
+              <div className="mb-1 flex items-center gap-1.5 px-1 text-[11px] font-medium tracking-wide text-[#71717A] uppercase">
+                <Pin className="h-3 w-3 text-accent" />
+                <span>{t.pinnedSection}</span>
+              </div>
+              <ul className="space-y-0.5">
+                {pinnedNotes.map((note) => {
+                  const isActive =
+                    activeView === 'editor' &&
+                    activeNote?.project === note.project &&
+                    activeNote?.name === note.name;
+                  return (
+                    <li
+                      key={`pinned:${note.project}/${note.name}`}
+                      className={`group flex min-h-10 items-center justify-between gap-1 rounded-lg px-2.5 text-sm transition-colors ${
+                        isActive
+                          ? 'bg-[#1F1F23] font-medium text-white shadow-card'
+                          : 'text-[#A1A1AA] hover:bg-[#18181B] hover:text-white'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSelectNote({
+                            project: note.project,
+                            name: note.name,
+                          });
+                          onCloseMobile();
+                        }}
+                        className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left"
+                      >
+                        <span
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${
+                            note.color
+                              ? getNoteColorStyle(note.color).badgeClass
+                              : isActive
+                                ? 'border-accent/40 bg-accent/15 text-accent'
+                                : 'border-white/[0.06] bg-white/[0.03] text-accent/80'
+                          }`}
+                        >
+                          <NoteIconGlyph
+                            icon={note.icon}
+                            isLocked={note.isLocked}
+                            className="h-3.5 w-3.5"
+                          />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">{note.title}</span>
+                          <span className="block truncate text-[10px] text-[#71717A]">
+                            {note.project}
+                          </span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void onTogglePinNote(note.project, note.name, false)
+                        }
+                        title={t.unpinNote}
+                        aria-label={`${t.unpinNote} ${note.title}`}
+                        className="rounded p-1.5 text-accent opacity-80 transition-opacity hover:bg-[#27272A] hover:opacity-100"
+                      >
+                        <Pin className="h-3 w-3 fill-current" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="mt-2.5 h-px bg-white/[0.06]" />
+            </div>
+          )}
+
           {filteredProjects.length === 0 ? (
             <div className="px-2 py-8 text-center text-xs leading-relaxed text-[#71717A]">
               {projects.length === 0 ? t.noProjectsYet : t.noMatchingItems}
@@ -564,8 +614,73 @@ export function Sidebar({
                   editingTarget?.kind === 'project' &&
                   editingTarget.name === project.name;
 
+                const isDropTarget =
+                  dropTargetProject === project.name &&
+                  draggedNote !== null &&
+                  draggedNote.project !== project.name;
+
                 return (
-                  <li key={project.name} className="select-none">
+                  <li
+                    key={project.name}
+                    onDragOver={(event) => {
+                      if (!draggedNote || draggedNote.project === project.name) {
+                        return;
+                      }
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = 'move';
+                      if (dropTargetProject !== project.name) {
+                        setDropTargetProject(project.name);
+                      }
+                    }}
+                    onDragLeave={(event) => {
+                      if (
+                        !event.currentTarget.contains(
+                          event.relatedTarget as Node | null
+                        )
+                      ) {
+                        setDropTargetProject((prev) =>
+                          prev === project.name ? null : prev
+                        );
+                      }
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      setDropTargetProject(null);
+                      let payload = draggedNote;
+                      if (!payload) {
+                        try {
+                          const raw = event.dataTransfer.getData(
+                            'application/x-notika-note'
+                          );
+                          if (raw) {
+                            payload = JSON.parse(raw) as {
+                              project: string;
+                              name: string;
+                            };
+                          }
+                        } catch {
+                          payload = null;
+                        }
+                      }
+                      setDraggedNote(null);
+                      if (payload && payload.project !== project.name) {
+                        setExpandedProjects((prev) => ({
+                          ...prev,
+                          [project.name]: true,
+                        }));
+                        void onMoveNote(
+                          payload.project,
+                          payload.name,
+                          project.name
+                        );
+                      }
+                    }}
+                    className={`select-none rounded-lg transition-colors ${
+                      isDropTarget
+                        ? 'bg-accent/10 ring-1 ring-accent'
+                        : ''
+                    }`}
+                  >
                     {isEditingProject ? (
                       <form
                         onSubmit={handleSubmitRename}
@@ -581,12 +696,12 @@ export function Sidebar({
                           onKeyDown={(event) => {
                             if (event.key === 'Escape') setEditingTarget(null);
                           }}
-                          className="h-8 w-full rounded border border-white/[0.1] bg-black px-2 text-xs text-white outline-none focus:border-[#34D399]"
+                          className="h-8 w-full rounded border border-white/[0.1] bg-black px-2 text-xs text-white outline-none focus:border-accent"
                         />
                         <button
                           type="submit"
                           aria-label={t.save}
-                          className="rounded p-1.5 text-[#34D399] hover:bg-black"
+                          className="rounded p-1.5 text-accent hover:bg-black"
                         >
                           <Check className="h-3.5 w-3.5" />
                         </button>
@@ -611,20 +726,56 @@ export function Sidebar({
                           ) : (
                             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[#71717A]" />
                           )}
-                          {isExpanded ? (
-                            <FolderOpen className="h-4 w-4 shrink-0 text-[#34D399]" />
+                          {project.icon || project.color ? (
+                            <span
+                              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                                getNoteColorStyle(project.color).badgeClass
+                              }`}
+                            >
+                              <NoteIconGlyph
+                                icon={project.icon}
+                                isFolder={!project.icon}
+                                isExpanded={isExpanded}
+                                className="h-3.5 w-3.5"
+                              />
+                            </span>
+                          ) : isExpanded ? (
+                            <FolderOpen className="h-4 w-4 shrink-0 text-accent" />
                           ) : (
                             <Folder className="h-4 w-4 shrink-0 text-[#A1A1AA]" />
                           )}
-                          <span className="truncate font-medium text-[#E4E4E7]">
+                          <span
+                            className={`truncate font-medium ${
+                              project.color
+                                ? getNoteColorStyle(project.color).iconTextClass
+                                : 'text-[#E4E4E7]'
+                            }`}
+                          >
                             {project.name}
                           </span>
-                          <span className="ml-1 shrink-0 text-xs text-[#71717A] tabular-nums">
-                            {project.noteCount}
-                          </span>
+                          {isDropTarget ? (
+                            <span className="ms-1 truncate text-[10px] font-medium text-accent">
+                              {t.dropToMoveHint}
+                            </span>
+                          ) : (
+                            <span className="ml-1 shrink-0 text-xs text-[#71717A] tabular-nums">
+                              {project.noteCount}
+                            </span>
+                          )}
                         </button>
 
                         <div className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onCustomizeProjectAppearance(project)
+                            }
+                            title={t.customizeAppearance}
+                            aria-label={`${t.customizeAppearance} ${project.name}`}
+                            className="rounded p-1.5 text-[#A1A1AA] hover:bg-[#27272A] hover:text-white"
+                          >
+                            <Palette className="h-3.5 w-3.5" />
+                          </button>
                           <button
                             type="button"
                             onClick={() => {
@@ -632,8 +783,8 @@ export function Sidebar({
                                 ...prev,
                                 [project.name]: true,
                               }));
-                              setNewNoteTargetProject(project.name);
-                              setNewNoteName('');
+                              onCloseMobile();
+                              onRequestNewNote(project.name);
                             }}
                             title={t.newNote}
                             aria-label={`${project.name} - ${t.newNote}`}
@@ -669,53 +820,12 @@ export function Sidebar({
 
                     {isExpanded && (
                       <div className="mt-0.5 space-y-0.5 ps-4">
-                        {newNoteTargetProject === project.name && (
-                          <form
-                            onSubmit={(event) =>
-                              handleSubmitNewNote(event, project.name)
-                            }
-                            className="flex items-center gap-1 rounded-lg bg-[#1F1F23] px-2 py-1"
-                          >
-                            <input
-                              ref={newNoteInputRef}
-                              type="text"
-                              value={newNoteName}
-                              onChange={(event) =>
-                                setNewNoteName(event.target.value)
-                              }
-                              onKeyDown={(event) => {
-                                if (event.key === 'Escape') {
-                                  setNewNoteTargetProject(null);
-                                }
-                              }}
-                              placeholder={t.noteNamePlaceholder}
-                              className="h-8 w-full rounded border border-white/[0.1] bg-black px-2 text-xs text-white placeholder-[#71717A] outline-none focus:border-[#34D399]"
-                            />
-                            <button
-                              type="submit"
-                              aria-label={t.newNote}
-                              className="btn-primary-tactile flex h-8 w-8 shrink-0 items-center justify-center rounded"
-                            >
-                              <Check className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setNewNoteTargetProject(null)}
-                              aria-label={t.cancel}
-                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-[#A1A1AA] hover:bg-black"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </form>
-                        )}
-
-                        {project.notes.length === 0 &&
-                        newNoteTargetProject !== project.name ? (
+                        {project.notes.length === 0 ? (
                           <button
                             type="button"
                             onClick={() => {
-                              setNewNoteTargetProject(project.name);
-                              setNewNoteName('');
+                              onCloseMobile();
+                              onRequestNewNote(project.name);
                             }}
                             className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-[#71717A] transition-colors hover:bg-[#18181B] hover:text-[#E4E4E7]"
                           >
@@ -753,12 +863,12 @@ export function Sidebar({
                                         setEditingTarget(null);
                                       }
                                     }}
-                                    className="h-8 w-full rounded border border-white/[0.1] bg-black px-2 text-xs text-white outline-none focus:border-[#34D399]"
+                                    className="h-8 w-full rounded border border-white/[0.1] bg-black px-2 text-xs text-white outline-none focus:border-accent"
                                   />
                                   <button
                                     type="submit"
                                     aria-label={t.save}
-                                    className="rounded p-1.5 text-[#34D399] hover:bg-black"
+                                    className="rounded p-1.5 text-accent hover:bg-black"
                                   >
                                     <Check className="h-3.5 w-3.5" />
                                   </button>
@@ -774,10 +884,37 @@ export function Sidebar({
                               );
                             }
 
+                            const isBeingDragged =
+                              draggedNote?.project === project.name &&
+                              draggedNote?.name === note.name;
+
                             return (
                               <div
                                 key={note.name}
-                                className={`group flex min-h-10 items-center justify-between gap-1 rounded-lg px-2.5 text-sm transition-colors ${
+                                draggable
+                                onDragStart={(event) => {
+                                  const ref = {
+                                    project: project.name,
+                                    name: note.name,
+                                  };
+                                  setDraggedNote(ref);
+                                  event.dataTransfer.effectAllowed = 'move';
+                                  event.dataTransfer.setData(
+                                    'application/x-notika-note',
+                                    JSON.stringify(ref)
+                                  );
+                                  event.dataTransfer.setData(
+                                    'text/plain',
+                                    note.name
+                                  );
+                                }}
+                                onDragEnd={() => {
+                                  setDraggedNote(null);
+                                  setDropTargetProject(null);
+                                }}
+                                className={`group flex min-h-10 cursor-grab items-center justify-between gap-1 rounded-lg px-2.5 text-sm transition-colors active:cursor-grabbing ${
+                                  isBeingDragged ? 'opacity-45' : ''
+                                } ${
                                   isActive
                                     ? 'bg-[#1F1F23] font-medium text-white shadow-card'
                                     : 'text-[#A1A1AA] hover:bg-[#18181B] hover:text-white'
@@ -792,19 +929,95 @@ export function Sidebar({
                                     });
                                     onCloseMobile();
                                   }}
-                                  className="flex min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left"
+                                  className="flex min-w-0 flex-1 items-start gap-2 py-2 text-left"
                                 >
-                                  <FileText
-                                    className={`h-4 w-4 shrink-0 ${
-                                      isActive
-                                        ? 'text-[#34D399]'
-                                        : 'text-[#71717A]'
-                                    }`}
-                                  />
-                                  <span className="truncate">{note.title}</span>
+                                  {note.isLocked ? (
+                                    <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                                  ) : note.icon || note.color ? (
+                                    <span
+                                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                                        getNoteColorStyle(note.color).badgeClass
+                                      }`}
+                                    >
+                                      <NoteIconGlyph
+                                        icon={note.icon}
+                                        className="h-3.5 w-3.5"
+                                      />
+                                    </span>
+                                  ) : (
+                                    <FileText
+                                      className={`mt-0.5 h-4 w-4 shrink-0 ${
+                                        isActive
+                                          ? 'text-accent'
+                                          : 'text-[#71717A]'
+                                      }`}
+                                    />
+                                  )}
+                                  <span className="min-w-0 flex-1">
+                                    <span
+                                      className={`block truncate ${
+                                        note.color && !isActive
+                                          ? getNoteColorStyle(note.color)
+                                              .iconTextClass
+                                          : ''
+                                      }`}
+                                    >
+                                      {note.title}
+                                    </span>
+                                    {showTags &&
+                                      note.tags &&
+                                      note.tags.length > 0 && (
+                                        <span className="mt-1 flex flex-wrap gap-1">
+                                          {note.tags.slice(0, 3).map((tag) => (
+                                            <span
+                                              key={tag}
+                                              className="rounded bg-accent/10 px-1.5 py-0.2 text-[10px] font-medium text-accent/90"
+                                            >
+                                              #{tag}
+                                            </span>
+                                          ))}
+                                        </span>
+                                      )}
+                                  </span>
                                 </button>
 
-                                <div className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
+                                <div className="flex shrink-0 items-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onCustomizeNoteAppearance(note)
+                                    }
+                                    title={t.customizeAppearance}
+                                    aria-label={`${t.customizeAppearance} ${note.title}`}
+                                    className="rounded p-1 text-[#A1A1AA] opacity-100 transition-opacity hover:bg-[#27272A] hover:text-white lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100"
+                                  >
+                                    <Palette className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void onTogglePinNote(
+                                        project.name,
+                                        note.name,
+                                        !note.pinned
+                                      )
+                                    }
+                                    title={note.pinned ? t.unpinNote : t.pinNote}
+                                    aria-label={`${
+                                      note.pinned ? t.unpinNote : t.pinNote
+                                    } ${note.title}`}
+                                    className={`rounded p-1 transition-opacity ${
+                                      note.pinned
+                                        ? 'text-accent opacity-100 hover:bg-[#27272A]'
+                                        : 'text-[#A1A1AA] opacity-100 hover:bg-[#27272A] hover:text-white lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100'
+                                    }`}
+                                  >
+                                    <Pin
+                                      className={`h-3 w-3 ${
+                                        note.pinned ? 'fill-current' : ''
+                                      }`}
+                                    />
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -816,7 +1029,7 @@ export function Sidebar({
                                       setEditingValue(note.title);
                                     }}
                                     aria-label={note.title}
-                                    className="rounded p-1.5 text-[#A1A1AA] hover:bg-[#27272A] hover:text-white"
+                                    className="rounded p-1 text-[#A1A1AA] opacity-100 transition-opacity hover:bg-[#27272A] hover:text-white lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100"
                                   >
                                     <Pencil className="h-3 w-3" />
                                   </button>
@@ -829,7 +1042,7 @@ export function Sidebar({
                                       )
                                     }
                                     aria-label={`${t.deletePermanently} ${note.title}`}
-                                    className="rounded p-1.5 text-[#A1A1AA] hover:bg-rose-500/15 hover:text-rose-400"
+                                    className="rounded p-1 text-[#A1A1AA] opacity-100 transition-opacity hover:bg-rose-500/15 hover:text-rose-400 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100"
                                   >
                                     <Trash2 className="h-3 w-3" />
                                   </button>
@@ -859,7 +1072,7 @@ export function Sidebar({
             }}
             className="flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded-lg bg-[#18181B] px-3 text-sm font-medium text-[#FAFAFA] transition-colors hover:bg-[#222227]"
           >
-            <Settings className="h-4 w-4 shrink-0 text-[#34D399]" />
+            <Settings className="h-4 w-4 shrink-0 text-accent" />
             <span className="truncate">{t.settings}</span>
           </button>
 

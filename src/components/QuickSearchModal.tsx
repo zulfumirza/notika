@@ -176,7 +176,7 @@ export function QuickSearchModal({
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex min-w-0 items-center gap-2">
-                            <FileText className="h-4 w-4 shrink-0 text-[#34D399]" />
+                            <FileText className="h-4 w-4 shrink-0 text-accent" />
                             <span className="truncate text-sm font-medium text-[#FAFAFA]">
                               {item.title}
                             </span>

@@ -1,12 +1,14 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { hashPasswordSecret, verifyPasswordSecret } from './locks.ts';
 import type {
   AppSettings,
   PublicSharedNote,
   ShareKind,
   SharePermission,
   ShareRecord,
+  StoredShareRecord,
 } from './types.ts';
 import {
   VaultError,
@@ -33,16 +35,31 @@ function generateMcpToken(): string {
   return `ntk_${crypto.randomBytes(24).toString('hex')}`;
 }
 
-async function readAllShares(dataDir: string): Promise<ShareRecord[]> {
+function toPublicShareRecord(rec: StoredShareRecord): ShareRecord {
+  const { passwordHash, ...rest } = rec;
+  return {
+    ...rest,
+    ...(passwordHash ? { hasPassword: true } : {}),
+  };
+}
+
+function stripExt(fileName: string): string {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.md')) return fileName.slice(0, -3);
+  if (lower.endsWith('.txt')) return fileName.slice(0, -4);
+  return fileName;
+}
+
+async function readAllShares(dataDir: string): Promise<StoredShareRecord[]> {
   const filePath = path.join(dataDir, SHARES_FILE);
   try {
     const raw = await fs.readFile(filePath, 'utf8');
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
     const nowIso = new Date().toISOString();
-    return parsed.filter((item): item is ShareRecord => {
+    return parsed.filter((item): item is StoredShareRecord => {
       if (typeof item !== 'object' || item === null) return false;
-      const rec = item as Partial<ShareRecord>;
+      const rec = item as Partial<StoredShareRecord>;
       if (
         typeof rec.code !== 'string' ||
         typeof rec.project !== 'string' ||
@@ -55,16 +72,14 @@ async function readAllShares(dataDir: string): Promise<ShareRecord[]> {
       }
       return true;
     });
-  } catch (err: unknown) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') return [];
+  } catch {
     return [];
   }
 }
 
 async function writeAllShares(
   dataDir: string,
-  shares: ShareRecord[]
+  shares: StoredShareRecord[]
 ): Promise<void> {
   const filePath = path.join(dataDir, SHARES_FILE);
   await fs.writeFile(filePath, JSON.stringify(shares, null, 2), 'utf8');
@@ -81,9 +96,9 @@ export async function listSharesForNote(
     rawNote
   );
   const all = await readAllShares(dataDir);
-  return all.filter(
-    (item) => item.project === projectName && item.note === noteName
-  );
+  return all
+    .filter((item) => item.project === projectName && item.note === noteName)
+    .map(toPublicShareRecord);
 }
 
 export interface CreateShareInput {
@@ -94,6 +109,7 @@ export interface CreateShareInput {
   inviteeName?: unknown;
   inviteeEmail?: unknown;
   expiresInHours?: unknown;
+  password?: unknown;
 }
 
 export async function createShareOrInvite(
@@ -141,13 +157,21 @@ export async function createShareOrInvite(
     expiresAt = new Date(Date.now() + ms).toISOString();
   }
 
+  const rawPassword =
+    typeof input.password === 'string' && input.password.length > 0
+      ? input.password
+      : undefined;
+  const passwordHash = rawPassword
+    ? hashPasswordSecret(rawPassword)
+    : undefined;
+
   const all = await readAllShares(dataDir);
   let code = generateShortCode(7);
   while (all.some((s) => s.code === code)) {
     code = generateShortCode(7);
   }
 
-  const record: ShareRecord = {
+  const record: StoredShareRecord = {
     code,
     project: projectName,
     note: noteName,
@@ -157,11 +181,12 @@ export async function createShareOrInvite(
     inviteeEmail,
     createdAt: new Date().toISOString(),
     expiresAt,
+    ...(passwordHash ? { passwordHash } : {}),
   };
 
   all.unshift(record);
   await writeAllShares(dataDir, all);
-  return record;
+  return toPublicShareRecord(record);
 }
 
 export async function updateSharePermission(
@@ -181,13 +206,13 @@ export async function updateSharePermission(
     throw new VaultError('Paylaşım bağlantısı bulunamadı.', 404);
   }
 
-  const updated: ShareRecord = {
+  const updated: StoredShareRecord = {
     ...all[idx],
     permission,
   };
   all[idx] = updated;
   await writeAllShares(dataDir, all);
-  return updated;
+  return toPublicShareRecord(updated);
 }
 
 export async function revokeShare(
@@ -206,9 +231,103 @@ export async function revokeShare(
   await writeAllShares(dataDir, next);
 }
 
+export async function relocateShareNoteReferences(
+  dataDir: string,
+  oldProject: string,
+  oldNote: string,
+  newProject: string,
+  newNote: string
+): Promise<void> {
+  if (oldProject === newProject && oldNote === newNote) return;
+  const all = await readAllShares(dataDir);
+  let changed = false;
+  const next = all.map((share) => {
+    if (share.project === oldProject && share.note === oldNote) {
+      changed = true;
+      return { ...share, project: newProject, note: newNote };
+    }
+    return share;
+  });
+  if (changed) {
+    await writeAllShares(dataDir, next);
+  }
+}
+
+export async function relocateShareProjectReferences(
+  dataDir: string,
+  oldProject: string,
+  newProject: string
+): Promise<void> {
+  if (oldProject === newProject) return;
+  const all = await readAllShares(dataDir);
+  let changed = false;
+  const next = all.map((share) => {
+    if (share.project === oldProject) {
+      changed = true;
+      return { ...share, project: newProject };
+    }
+    return share;
+  });
+  if (changed) {
+    await writeAllShares(dataDir, next);
+  }
+}
+
+export async function deleteSharesForNote(
+  dataDir: string,
+  project: string,
+  note: string
+): Promise<void> {
+  const all = await readAllShares(dataDir);
+  const next = all.filter(
+    (share) => !(share.project === project && share.note === note)
+  );
+  if (next.length !== all.length) {
+    await writeAllShares(dataDir, next);
+  }
+}
+
+export async function deleteSharesForProject(
+  dataDir: string,
+  project: string
+): Promise<void> {
+  const all = await readAllShares(dataDir);
+  const next = all.filter((share) => share.project !== project);
+  if (next.length !== all.length) {
+    await writeAllShares(dataDir, next);
+  }
+}
+
+export async function verifySharePassword(
+  dataDir: string,
+  rawCode: unknown,
+  rawPassword: unknown
+): Promise<void> {
+  if (typeof rawCode !== 'string' || !/^[a-z0-9]{4,16}$/i.test(rawCode)) {
+    throw new VaultError('Geçersiz paylaşım bağlantısı.', 404);
+  }
+
+  const all = await readAllShares(dataDir);
+  const share = all.find((s) => s.code === rawCode);
+  if (!share) {
+    throw new VaultError(
+      'Bu paylaşım veya davet bağlantısı geçersiz ya da süresi dolmuş.',
+      404
+    );
+  }
+
+  if (!share.passwordHash) return;
+
+  const password = typeof rawPassword === 'string' ? rawPassword : '';
+  if (!verifyPasswordSecret(password, share.passwordHash)) {
+    throw new VaultError('Paylaşım şifresi hatalı.', 401);
+  }
+}
+
 export async function resolveSharedNote(
   dataDir: string,
-  rawCode: unknown
+  rawCode: unknown,
+  unlockedCodes: Set<string> = new Set()
 ): Promise<PublicSharedNote> {
   if (typeof rawCode !== 'string' || !/^[a-z0-9]{4,16}$/i.test(rawCode)) {
     throw new VaultError('Geçersiz paylaşım bağlantısı.', 404);
@@ -223,6 +342,23 @@ export async function resolveSharedNote(
     );
   }
 
+  const hasPassword = Boolean(share.passwordHash);
+  if (hasPassword && !unlockedCodes.has(share.code)) {
+    return {
+      code: share.code,
+      project: share.project,
+      note: share.note,
+      title: stripExt(share.note),
+      content: '',
+      updatedAt: share.createdAt,
+      permission: share.permission,
+      kind: share.kind,
+      inviteeName: share.inviteeName,
+      hasPassword: true,
+      requiresPassword: true,
+    };
+  }
+
   const doc = await readNote(dataDir, share.project, share.note);
   return {
     code: share.code,
@@ -234,13 +370,15 @@ export async function resolveSharedNote(
     permission: share.permission,
     kind: share.kind,
     inviteeName: share.inviteeName,
+    ...(hasPassword ? { hasPassword: true } : {}),
   };
 }
 
 export async function saveSharedNote(
   dataDir: string,
   rawCode: unknown,
-  content: unknown
+  content: unknown,
+  unlockedCodes: Set<string> = new Set()
 ): Promise<PublicSharedNote> {
   if (typeof rawCode !== 'string' || !/^[a-z0-9]{4,16}$/i.test(rawCode)) {
     throw new VaultError('Geçersiz paylaşım bağlantısı.', 404);
@@ -253,6 +391,10 @@ export async function saveSharedNote(
       'Bu paylaşım bağlantısı geçersiz veya iptal edilmiş.',
       404
     );
+  }
+
+  if (share.passwordHash && !unlockedCodes.has(share.code)) {
+    throw new VaultError('Bu paylaşımı düzenlemek için şifre doğrulaması gerekli.', 401);
   }
 
   if (share.permission !== 'edit') {
@@ -273,6 +415,7 @@ export async function saveSharedNote(
     permission: share.permission,
     kind: share.kind,
     inviteeName: share.inviteeName,
+    ...(share.passwordHash ? { hasPassword: true } : {}),
   };
 }
 

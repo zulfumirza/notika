@@ -1,7 +1,9 @@
 import type {
   AppSettings,
   AuthStatus,
+  NoteColorId,
   NoteDocument,
+  NoteIconId,
   NoteMeta,
   ProjectTreeItem,
   PublicSharedNote,
@@ -9,6 +11,8 @@ import type {
   ShareKind,
   SharePermission,
   ShareRecord,
+  TemplateItem,
+  TrashItem,
 } from '../types/vault';
 
 export class ApiError extends Error {
@@ -71,10 +75,36 @@ export async function fetchVaultTree(): Promise<ProjectTreeItem[]> {
   return data.projects;
 }
 
-export async function createProject(name: string): Promise<ProjectTreeItem> {
+export async function createProject(
+  name: string,
+  appearance?: {
+    icon?: NoteIconId | null;
+    color?: NoteColorId | null;
+  }
+): Promise<ProjectTreeItem> {
   const data = await requestJson<{ project: ProjectTreeItem }>('/api/projects', {
     method: 'POST',
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({
+      name,
+      ...(appearance?.icon ? { icon: appearance.icon } : {}),
+      ...(appearance?.color ? { color: appearance.color } : {}),
+    }),
+  });
+  return data.project;
+}
+
+export async function updateProjectAppearance(
+  project: string,
+  appearance: {
+    icon?: NoteIconId | null;
+    color?: NoteColorId | null;
+  }
+): Promise<{ name: string; icon?: NoteIconId; color?: NoteColorId }> {
+  const data = await requestJson<{
+    project: { name: string; icon?: NoteIconId; color?: NoteColorId };
+  }>('/api/projects/appearance', {
+    method: 'POST',
+    body: JSON.stringify({ project, ...appearance }),
   });
   return data.project;
 }
@@ -115,11 +145,21 @@ export async function fetchNote(
 export async function createNote(
   project: string,
   name: string,
-  content?: string
+  content?: string,
+  appearance?: {
+    icon?: NoteIconId | null;
+    color?: NoteColorId | null;
+  }
 ): Promise<NoteDocument> {
   const data = await requestJson<{ note: NoteDocument }>('/api/notes', {
     method: 'POST',
-    body: JSON.stringify({ project, name, content }),
+    body: JSON.stringify({
+      project,
+      name,
+      content,
+      ...(appearance?.icon ? { icon: appearance.icon } : {}),
+      ...(appearance?.color ? { color: appearance.color } : {}),
+    }),
   });
   return data.note;
 }
@@ -146,6 +186,70 @@ export async function renameNote(
     body: JSON.stringify({ project, name, newName }),
   });
   return data.note;
+}
+
+export async function moveNote(
+  fromProject: string,
+  noteName: string,
+  toProject: string
+): Promise<NoteMeta> {
+  const data = await requestJson<{ note: NoteMeta }>('/api/notes/move', {
+    method: 'POST',
+    body: JSON.stringify({ fromProject, noteName, toProject }),
+  });
+  return data.note;
+}
+
+export async function toggleNotePin(
+  project: string,
+  name: string,
+  pinned: boolean
+): Promise<{ note: NoteMeta; content: string }> {
+  return requestJson<{ note: NoteMeta; content: string }>('/api/notes/pin', {
+    method: 'POST',
+    body: JSON.stringify({ project, name, pinned }),
+  });
+}
+
+export async function updateNoteAppearance(
+  project: string,
+  name: string,
+  appearance: {
+    icon?: NoteIconId | null;
+    color?: NoteColorId | null;
+  }
+): Promise<{ note: NoteMeta; content: string }> {
+  return requestJson<{ note: NoteMeta; content: string }>(
+    '/api/notes/appearance',
+    {
+      method: 'POST',
+      body: JSON.stringify({ project, name, ...appearance }),
+    }
+  );
+}
+
+export async function unlockNote(
+  project: string,
+  name: string,
+  password: string
+): Promise<void> {
+  await requestJson<{ ok: boolean }>('/api/notes/unlock', {
+    method: 'POST',
+    body: JSON.stringify({ project, name, password }),
+  });
+}
+
+export async function configureNoteLock(payload: {
+  project: string;
+  name: string;
+  action: 'set' | 'remove' | 'lock-session';
+  password?: string;
+  currentPassword?: string;
+}): Promise<{ ok: boolean; isLocked: boolean }> {
+  return requestJson<{ ok: boolean; isLocked: boolean }>('/api/notes/lock', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function deleteNote(project: string, note: string): Promise<void> {
@@ -182,6 +286,7 @@ export async function createShareOrInvite(payload: {
   kind: ShareKind;
   inviteeName?: string;
   inviteeEmail?: string;
+  password?: string;
 }): Promise<ShareRecord> {
   const data = await requestJson<{ share: ShareRecord }>('/api/shares', {
     method: 'POST',
@@ -221,6 +326,20 @@ export async function fetchPublicShare(code: string): Promise<PublicSharedNote> 
   return data.note;
 }
 
+export async function verifyPublicSharePassword(
+  code: string,
+  password: string
+): Promise<PublicSharedNote> {
+  const data = await requestJson<{ note: PublicSharedNote }>(
+    `/api/public/share/${encodeURIComponent(code)}/verify`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }
+  );
+  return data.note;
+}
+
 export async function savePublicShare(
   code: string,
   content: string
@@ -233,6 +352,47 @@ export async function savePublicShare(
     }
   );
   return data.note;
+}
+
+// Templates
+export async function fetchTemplates(): Promise<TemplateItem[]> {
+  const data = await requestJson<{ templates: TemplateItem[] }>('/api/templates');
+  return data.templates;
+}
+
+export async function createTemplate(
+  name: string,
+  content: string
+): Promise<TemplateItem> {
+  const data = await requestJson<{ template: TemplateItem }>('/api/templates', {
+    method: 'POST',
+    body: JSON.stringify({ name, content }),
+  });
+  return data.template;
+}
+
+export async function saveTemplate(
+  name: string,
+  content: string,
+  newName?: string
+): Promise<TemplateItem> {
+  const data = await requestJson<{ template: TemplateItem }>(
+    `/api/templates/${encodeURIComponent(name)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ content, newName }),
+    }
+  );
+  return data.template;
+}
+
+export async function deleteTemplate(name: string): Promise<void> {
+  await requestJson<{ ok: boolean }>(
+    `/api/templates/${encodeURIComponent(name)}`,
+    {
+      method: 'DELETE',
+    }
+  );
 }
 
 // Settings & MCP
@@ -258,3 +418,39 @@ export async function regenerateMcpToken(): Promise<AppSettings> {
   );
   return data.settings;
 }
+
+// Trash
+export async function fetchTrash(): Promise<TrashItem[]> {
+  const data = await requestJson<{ items: TrashItem[] }>('/api/trash');
+  return data.items;
+}
+
+export async function restoreTrashItem(id: string): Promise<{
+  item: TrashItem;
+  restoredProject: string;
+  restoredNote?: string;
+}> {
+  return requestJson<{
+    item: TrashItem;
+    restoredProject: string;
+    restoredNote?: string;
+  }>(`/api/trash/${encodeURIComponent(id)}/restore`, {
+    method: 'POST',
+  });
+}
+
+export async function purgeTrashItem(id: string): Promise<void> {
+  await requestJson<{ ok: boolean }>(
+    `/api/trash/${encodeURIComponent(id)}`,
+    {
+      method: 'DELETE',
+    }
+  );
+}
+
+export async function emptyTrash(): Promise<void> {
+  await requestJson<{ ok: boolean }>('/api/trash', {
+    method: 'DELETE',
+  });
+}
+

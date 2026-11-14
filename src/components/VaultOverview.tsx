@@ -15,6 +15,7 @@ import {
 import type { TranslationStrings } from '../i18n/translations';
 import type { ActiveNoteRef, NoteMeta, ProjectTreeItem } from '../types/vault';
 import { AssetBadge } from './AssetBadge';
+import { NoteIconGlyph, getNoteColorStyle } from './NoteIconDisplay';
 import { NotikaLogo } from './NotikaLogo';
 import { ActivitySparkline, VaultActivityChart } from './VaultCharts';
 import type { ActivityPoint } from './VaultCharts';
@@ -237,7 +238,7 @@ export function VaultOverview({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#09090B] px-3 pb-7 sm:px-4 lg:px-8">
+    <div className="flex-1 overflow-y-auto bg-[#09090B] px-3 pb-[max(1.75rem,env(safe-area-inset-bottom))] sm:px-4 lg:px-8">
       {/* Topbar */}
       <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 py-3">
         <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:max-w-md sm:gap-4">
@@ -251,14 +252,11 @@ export function VaultOverview({
           </button>
 
           <div className="flex items-center gap-2 lg:hidden">
-            <NotikaLogo className="h-6 w-6 text-[#34D399]" />
-            <span className="whitespace-nowrap text-base font-semibold tracking-tight text-[#FAFAFA]">
-              Notika
-            </span>
+            <NotikaLogo className="h-6 w-6 shrink-0 text-accent" />
           </div>
 
           <span className="hidden whitespace-nowrap text-lg font-semibold tracking-tight text-[#FAFAFA] lg:inline">
-            Notika
+            {t.overview}
           </span>
 
           <button
@@ -287,7 +285,7 @@ export function VaultOverview({
               aria-label={t.projects}
               value={activeSelectedProject}
               onChange={(event) => setSelectedProject(event.target.value)}
-              className="hidden h-10 min-w-[160px] rounded-lg border border-white/[0.1] bg-[#18181B] px-3 text-sm text-[#FAFAFA] outline-none focus:border-[#34D399] xl:block"
+              className="hidden h-10 min-w-[160px] rounded-lg border border-white/[0.1] bg-[#18181B] px-3 text-sm text-[#FAFAFA] outline-none focus:border-accent xl:block"
             >
               {projects.map((p) => (
                 <option key={p.name} value={p.name}>
@@ -423,7 +421,7 @@ export function VaultOverview({
                     onClick={() => setChartRange(range)}
                     className={`h-8 rounded-md px-2.5 text-xs transition-colors sm:px-3 sm:text-sm ${
                       chartRange === range
-                        ? 'bg-black font-medium text-[#34D399]'
+                        ? 'bg-black font-medium text-accent'
                         : 'text-[#A1A1AA] hover:text-white'
                     }`}
                   >
@@ -586,14 +584,44 @@ export function VaultOverview({
                           }
                           className="cursor-pointer border-y border-white/[0.08] bg-black transition-colors hover:bg-[#18181B]"
                         >
-                          <td className="h-12 max-w-[200px] px-3 font-medium text-[#FAFAFA]">
+                          <td className="h-12 max-w-[240px] px-3 font-medium text-[#FAFAFA]">
                             <span className="flex items-center gap-2.5">
-                              <AssetBadge
-                                label={note.title}
-                                colorClass={getProjectColor(note.project)}
-                                size="sm"
-                              />
-                              <span className="truncate">{note.title}</span>
+                              {note.icon || note.color ? (
+                                <span
+                                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${
+                                    getNoteColorStyle(note.color).badgeClass
+                                  }`}
+                                >
+                                  <NoteIconGlyph
+                                    icon={note.icon}
+                                    isLocked={note.isLocked}
+                                    className="h-3.5 w-3.5"
+                                  />
+                                </span>
+                              ) : (
+                                <AssetBadge
+                                  label={note.title}
+                                  colorClass={getProjectColor(note.project)}
+                                  size="sm"
+                                />
+                              )}
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate">
+                                  {note.title}
+                                </span>
+                                {note.tags && note.tags.length > 0 && (
+                                  <span className="mt-0.5 flex flex-wrap gap-1">
+                                    {note.tags.slice(0, 2).map((tag) => (
+                                      <span
+                                        key={tag}
+                                        className="rounded bg-accent/10 px-1.5 py-0.2 text-[10px] font-medium text-accent"
+                                      >
+                                        #{tag}
+                                      </span>
+                                    ))}
+                                  </span>
+                                )}
+                              </span>
                             </span>
                           </td>
                           <td className="h-12 whitespace-nowrap px-3 font-medium text-[#E4E4E7] tabular-nums">
@@ -709,11 +737,25 @@ export function VaultOverview({
                         >
                           <td className="h-12 max-w-[180px] px-3 font-medium text-[#FAFAFA]">
                             <span className="flex items-center gap-2.5">
-                              <AssetBadge
-                                label={project.name}
-                                colorClass={getProjectColor(project.name)}
-                                size="sm"
-                              />
+                              {project.icon || project.color ? (
+                                <span
+                                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${
+                                    getNoteColorStyle(project.color).badgeClass
+                                  }`}
+                                >
+                                  <NoteIconGlyph
+                                    icon={project.icon}
+                                    isFolder={!project.icon}
+                                    className="h-3.5 w-3.5"
+                                  />
+                                </span>
+                              ) : (
+                                <AssetBadge
+                                  label={project.name}
+                                  colorClass={getProjectColor(project.name)}
+                                  size="sm"
+                                />
+                              )}
                               <span className="truncate">{project.name}</span>
                             </span>
                           </td>

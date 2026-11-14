@@ -1,12 +1,14 @@
 import crypto from 'node:crypto';
 import express from 'express';
 import type { Request, Response } from 'express';
+import { isNoteLocked } from './locks.ts';
 import { getAppSettings } from './shares.ts';
 import {
   VaultError,
   createNote,
   listVaultTree,
   readNote,
+  resolveNotePath,
   saveNote,
   searchNotes,
 } from './vault.ts';
@@ -234,6 +236,10 @@ export function createMcpRouter(dataDir: string): express.Router {
         }
         const project = decodeURIComponent(stripped.slice(0, slashIdx));
         const note = decodeURIComponent(stripped.slice(slashIdx + 1));
+        const resolved = await resolveNotePath(dataDir, project, note);
+        if (await isNoteLocked(dataDir, resolved.projectName, resolved.noteName)) {
+          throw new VaultError('Bu not şifre ile kilitlidir.', 423);
+        }
         const doc = await readNote(dataDir, project, note);
 
         res.json({
@@ -302,6 +308,10 @@ export function createMcpRouter(dataDir: string): express.Router {
         }
 
         if (toolName === 'read_note') {
+          const resolved = await resolveNotePath(dataDir, args.project, args.note);
+          if (await isNoteLocked(dataDir, resolved.projectName, resolved.noteName)) {
+            throw new VaultError('Bu not şifre ile kilitlidir.', 423);
+          }
           const doc = await readNote(dataDir, args.project, args.note);
           res.json({
             jsonrpc: '2.0',
@@ -336,6 +346,10 @@ export function createMcpRouter(dataDir: string): express.Router {
         }
 
         if (toolName === 'update_note') {
+          const resolved = await resolveNotePath(dataDir, args.project, args.note);
+          if (await isNoteLocked(dataDir, resolved.projectName, resolved.noteName)) {
+            throw new VaultError('Bu not şifre ile kilitlidir.', 423);
+          }
           const doc = await saveNote(
             dataDir,
             args.project,

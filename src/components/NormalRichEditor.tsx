@@ -26,14 +26,26 @@ interface NormalRichEditorProps {
   noteKey: string;
   content: string;
   isPlainText: boolean;
+  fontSize?: 13 | 14 | 15 | 16 | 18;
+  spellCheck?: boolean;
   t: TranslationStrings;
   onChangeContent: (nextContent: string) => void;
 }
+
+const FONT_SIZE_CLASS: Record<13 | 14 | 15 | 16 | 18, string> = {
+  13: 'text-[13px]!',
+  14: 'text-[14px]!',
+  15: 'text-[15.5px]!',
+  16: 'text-[16px]!',
+  18: 'text-[18px]!',
+};
 
 export function NormalRichEditor({
   noteKey,
   content,
   isPlainText,
+  fontSize = 15,
+  spellCheck = true,
   t,
   onChangeContent,
 }: NormalRichEditorProps) {
@@ -195,9 +207,9 @@ export function NormalRichEditor({
           aria-label={t.modeNormal}
           value={content}
           onChange={(event) => onChangeContent(event.target.value)}
-          spellCheck={true}
+          spellCheck={spellCheck}
           placeholder="..."
-          className="mx-auto h-full w-full max-w-4xl flex-1 resize-none bg-transparent px-4 py-5 text-[15.5px] leading-[1.75] text-[#E4E4E7] placeholder-[#52525B] outline-none sm:px-6 sm:py-6 lg:px-10 lg:py-8"
+          className={`mx-auto h-full w-full max-w-4xl flex-1 resize-none bg-transparent px-4 py-5 leading-[1.75] text-[#E4E4E7] placeholder-[#52525B] outline-none sm:px-6 sm:py-6 lg:px-10 lg:py-8 ${FONT_SIZE_CLASS[fontSize]}`}
         />
       </div>
     );
@@ -372,6 +384,7 @@ export function NormalRichEditor({
           ref={editorRef}
           contentEditable
           suppressContentEditableWarning
+          spellCheck={spellCheck}
           role="textbox"
           aria-multiline="true"
           aria-label="Normal zengin metin editörü"
@@ -387,7 +400,7 @@ export function NormalRichEditor({
               syncDomToMarkdown();
             }
           }}
-          className="markdown-preview mx-auto min-h-full max-w-3xl px-6 py-6 outline-none lg:px-8 lg:py-7"
+          className={`markdown-preview mx-auto min-h-full max-w-3xl px-6 py-6 outline-none lg:px-8 lg:py-7 ${FONT_SIZE_CLASS[fontSize]}`}
         />
       </div>
     </div>

@@ -52,7 +52,7 @@ export function LoginScreen({
         <div className="rounded-xl border border-white/[0.08] bg-black p-6">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <NotikaLogo className="h-9 w-9 shrink-0 text-[#34D399]" />
+              <NotikaLogo className="h-9 w-9 shrink-0 text-accent" />
               <div>
                 <h1 className="text-lg font-semibold tracking-tight text-[#FAFAFA]">
                   Notika
@@ -78,7 +78,7 @@ export function LoginScreen({
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder={t.loginPasswordPlaceholder}
-                className="mt-1.5 h-11 w-full rounded-lg border border-white/[0.1] bg-[#18181B] px-3.5 text-sm text-[#FAFAFA] placeholder-[#71717A] outline-none transition-colors focus:border-[#34D399]"
+                className="mt-1.5 h-11 w-full rounded-lg border border-white/[0.1] bg-[#18181B] px-3.5 text-sm text-[#FAFAFA] placeholder-[#71717A] outline-none transition-colors focus:border-accent"
               />
             </div>
 
@@ -107,7 +107,7 @@ export function LoginScreen({
               aria-label={t.languageLabel}
               value={language}
               onChange={(e) => onChangeLanguage(e.target.value as LanguageCode)}
-              className="h-9 w-full rounded-lg border border-white/[0.08] bg-[#111113] px-3 text-xs text-[#A1A1AA] outline-none focus:border-[#34D399]"
+              className="h-9 w-full rounded-lg border border-white/[0.08] bg-[#111113] px-3 text-xs text-[#A1A1AA] outline-none focus:border-accent"
             >
               {SUPPORTED_LANGUAGES.map((lang) => (
                 <option key={lang.code} value={lang.code}>

@@ -6,6 +6,7 @@ import {
   Copy,
   Link2,
   Loader2,
+  Lock,
   Trash2,
   UserPlus,
   X,
@@ -41,6 +42,7 @@ export function ShareInviteModal({
   const [permission, setPermission] = useState<SharePermission>('read');
   const [inviteeName, setInviteeName] = useState('');
   const [inviteeEmail, setInviteeEmail] = useState('');
+  const [sharePassword, setSharePassword] = useState('');
 
   const [shares, setShares] = useState<ShareRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -114,10 +116,12 @@ export function ShareInviteModal({
           activeTab === 'invite' && inviteeEmail.trim()
             ? inviteeEmail.trim()
             : undefined,
+        password: sharePassword ? sharePassword : undefined,
       });
       setShares((prev) => [created, ...prev]);
       setInviteeName('');
       setInviteeEmail('');
+      setSharePassword('');
       await handleCopy(created.code);
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : 'Oluşturulamadı.');
@@ -198,7 +202,7 @@ export function ShareInviteModal({
                 onClick={() => setActiveTab('link')}
                 className={`flex h-10 items-center justify-center gap-2 rounded-lg text-xs font-medium transition-colors sm:text-sm ${
                   activeTab === 'link'
-                    ? 'bg-black text-[#34D399]'
+                    ? 'bg-black text-accent'
                     : 'text-[#A1A1AA] hover:text-white'
                 }`}
               >
@@ -210,7 +214,7 @@ export function ShareInviteModal({
                 onClick={() => setActiveTab('invite')}
                 className={`flex h-10 items-center justify-center gap-2 rounded-lg text-xs font-medium transition-colors sm:text-sm ${
                   activeTab === 'invite'
-                    ? 'bg-black text-[#34D399]'
+                    ? 'bg-black text-accent'
                     : 'text-[#A1A1AA] hover:text-white'
                 }`}
               >
@@ -232,17 +236,31 @@ export function ShareInviteModal({
                     value={inviteeName}
                     onChange={(e) => setInviteeName(e.target.value)}
                     placeholder={t.inviteeNamePlaceholder}
-                    className="h-10 rounded-lg border border-white/[0.1] bg-black px-3 text-sm text-[#FAFAFA] placeholder-[#71717A] outline-none focus:border-[#34D399]"
+                    className="h-10 rounded-lg border border-white/[0.1] bg-black px-3 text-sm text-[#FAFAFA] placeholder-[#71717A] outline-none focus:border-accent"
                   />
                   <input
                     type="email"
                     value={inviteeEmail}
                     onChange={(e) => setInviteeEmail(e.target.value)}
                     placeholder={t.inviteeEmailPlaceholder}
-                    className="h-10 rounded-lg border border-white/[0.1] bg-black px-3 text-sm text-[#FAFAFA] placeholder-[#71717A] outline-none focus:border-[#34D399]"
+                    className="h-10 rounded-lg border border-white/[0.1] bg-black px-3 text-sm text-[#FAFAFA] placeholder-[#71717A] outline-none focus:border-accent"
                   />
                 </div>
               )}
+
+              <div>
+                <label className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[#A1A1AA]">
+                  <Lock className="h-3 w-3 text-accent" />
+                  <span>{t.sharePasswordLabel}</span>
+                </label>
+                <input
+                  type="password"
+                  value={sharePassword}
+                  onChange={(e) => setSharePassword(e.target.value)}
+                  placeholder={t.sharePasswordPlaceholder}
+                  className="h-10 w-full rounded-lg border border-white/[0.1] bg-black px-3 text-sm text-[#FAFAFA] placeholder-[#71717A] outline-none focus:border-accent"
+                />
+              </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-white/[0.08] bg-black p-1">
@@ -262,7 +280,7 @@ export function ShareInviteModal({
                     onClick={() => setPermission('edit')}
                     className={`h-8 rounded-md px-3 text-xs font-medium transition-colors ${
                       permission === 'edit'
-                        ? 'bg-[#1F1F23] text-[#34D399]'
+                        ? 'bg-[#1F1F23] text-accent'
                         : 'text-[#71717A] hover:text-white'
                     }`}
                   >
@@ -334,13 +352,19 @@ export function ShareInviteModal({
                               className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${
                                 share.kind === 'invite'
                                   ? 'bg-sky-500/15 text-sky-300'
-                                  : 'bg-emerald-500/15 text-[#34D399]'
+                                  : 'bg-accent/15 text-accent'
                               }`}
                             >
                               {share.kind === 'invite'
                                 ? share.inviteeName
                                 : `/s/${share.code}`}
                             </span>
+                            {share.hasPassword && (
+                              <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                                <Lock className="h-3 w-3" />
+                                <span>{t.sharePasswordProtectedBadge}</span>
+                              </span>
+                            )}
                             {share.inviteeEmail && (
                               <span className="truncate text-xs text-[#71717A]">
                                 {share.inviteeEmail}
@@ -359,7 +383,7 @@ export function ShareInviteModal({
                             onClick={() => void handleTogglePermission(share)}
                             className={`h-9 rounded-lg border border-white/[0.1] px-2.5 text-xs font-medium transition-colors ${
                               share.permission === 'edit'
-                                ? 'bg-emerald-500/10 text-[#34D399]'
+                                ? 'bg-accent/10 text-accent'
                                 : 'bg-black text-[#A1A1AA] hover:text-white'
                             }`}
                           >
@@ -375,7 +399,7 @@ export function ShareInviteModal({
                           >
                             {isCopied ? (
                               <>
-                                <Check className="h-3.5 w-3.5 text-[#34D399]" />
+                                <Check className="h-3.5 w-3.5 text-accent" />
                                 <span>{t.copied}</span>
                               </>
                             ) : (

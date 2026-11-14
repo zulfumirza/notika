@@ -1,0 +1,6 @@
+{
+  "name": "VaultMark",
+  "description": "Obsidian-inspired, single-user, self-hostable Markdown notes workspace backed by the local filesystem.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

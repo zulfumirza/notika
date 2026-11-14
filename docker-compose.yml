@@ -1,0 +1,17 @@
+services:
+  vaultmark:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vaultmark
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATA_DIR: /app/data
+      APP_PASSWORD: ${APP_PASSWORD:-}
+      AUTH_SECRET: ${AUTH_SECRET:-}
+    volumes:
+      - ./data:/app/data

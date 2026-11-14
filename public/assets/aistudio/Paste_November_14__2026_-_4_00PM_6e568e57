@@ -1,0 +1,767 @@
+Install dependencies:
+```bash
+npm: npm install lucide-react tabler/icons-react
+yarn: yarn add lucide-react tabler/icons-react
+pnpm: pnpm add lucide-react tabler/icons-react
+bun: bun add lucide-react tabler/icons-react
+```
+
+Copy-paste this component to /components/ui folder:
+```tsx
+demo.tsx
+import DashboardView from "./dashboardView"
+import DashboardLayout from "./dashboard-layout"
+
+export default function Web3DashboardDemo() {
+    return (
+        <DashboardLayout>
+            <DashboardView />
+        </DashboardLayout>
+    )
+}
+
+components/web3/asset-badge.tsx
+import { cn } from "@/lib/utils";
+
+type AssetBadgeProps = {
+  symbol: string;
+  color: string;
+  size?: "sm" | "md";
+};
+
+export function AssetBadge({ symbol, color, size = "md" }: AssetBadgeProps) {
+  const text = symbol === "Bitcoin" ? "B" : symbol.slice(0, 1);
+
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-full text-xs text-white  shadow-[inset_0_1px_2px_1px_rgba(255,255,255,0.2),inset_0px_-1px_2px_1px_rgba(0,0,0,0.08)] ",
+        size === "sm" ? "size-6" : "size-9",
+        color,
+        symbol === "ETH" || symbol === "Ethereum" ? "text-slate-700" : ""
+      )}
+    >
+      {text}
+    </span>
+  );
+}
+
+
+components/web3/asset-table-card.tsx
+"use client";
+
+import * as React from "react";
+import { ArrowRight, ChevronsUpDown, MoreVertical, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { AssetBadge } from "./asset-badge"; 
+
+type Asset = {
+  asset: string;
+  balance: string;
+  value: string;
+  color: string;
+};
+
+type AssetTableCardProps = {
+  title: string;
+  assets: Asset[];
+  action: string;
+  valueLabel: string;
+  external?: boolean;
+};
+
+export function AssetTableCard({
+  title,
+  assets,
+  action,
+  valueLabel,
+  external,
+}: AssetTableCardProps) {
+  const [sortField, setSortField] = React.useState<"balance" | "value" | null>(null);
+  const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
+
+  const handleSort = (field: "balance" | "value") => {
+    if (sortField === field) {
+      if (sortDir === "desc") {
+        setSortDir("asc");
+      } else {
+        setSortField(null);
+        setSortDir("desc");
+      }
+    } else {
+      setSortField(field);
+      setSortDir("desc");
+    }
+  };
+
+  const sortedAssets = React.useMemo(() => {
+    if (!sortField) return assets;
+    
+    return [...assets].sort((a, b) => {
+      const parseValue = (val: string) => {
+        return parseFloat(val.replace(/[^0-9.-]+/g, "")) || 0;
+      };
+
+      const valA = parseValue(a[sortField]);
+      const valB = parseValue(b[sortField]);
+
+      if (sortDir === "asc") {
+        return valA - valB;
+      } else {
+        return valB - valA;
+      }
+    });
+  }, [assets, sortField, sortDir]);
+
+  return (
+    <Card className="rounded-2xl bg-card dark:bg-muted shadow-primary ring-0 py-4 p-2 gap-2">
+      <CardHeader className="flex items-center justify-between px-2  ">
+        <CardTitle className="text-lg font-medium">{title}</CardTitle>
+        <Button variant="ghost" size="icon-sm" aria-label={`${title} menu`}>
+          <MoreVertical className="size-4" />
+        </Button>
+      </CardHeader>
+      <CardContent className="px-4 p-2 rounded-lg bg-muted/40 dark:bg-black">
+        <div className="border rounded-md overflow-hidden ">
+          <Table >
+            <TableHeader className="bg-muted rounded-md">
+              <TableRow className="hover:bg-muted rounded-md   ">
+                <TableHead className="h-9 text-sm font-medium">Asset</TableHead>
+                <TableHead 
+                  className="h-9 text-sm font-medium cursor-pointer select-none transition-colors hover:text-foreground"
+                  onClick={() => handleSort("balance")}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    Balance
+                    <ChevronsUpDown className={`size-4 ${sortField === "balance" ? "text-foreground" : "text-muted-foreground"}`} />
+                  </span>
+                </TableHead>
+                <TableHead 
+                  className="h-9 text-sm font-medium cursor-pointer select-none transition-colors hover:text-foreground"
+                  onClick={() => handleSort("value")}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    {valueLabel}
+                    <ChevronsUpDown className={`size-4 ${sortField === "value" ? "text-foreground" : "text-muted-foreground"}`} />
+                  </span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody >
+              {sortedAssets.map((asset) => (
+                <TableRow key={asset.asset} className="border-border/70 border-y bg-white dark:bg-black hover:dark:bg-muted">
+                  <TableCell className="h-12 bg-transparent">
+                    <span className="inline-flex items-center gap-3 font-medium ">
+                      <AssetBadge symbol={asset.asset} color={asset.color} size="sm" />
+                      {asset.asset}
+                    </span>
+                  </TableCell>
+                  <TableCell className="h-12 font-medium">{asset.balance}</TableCell>
+                  <TableCell className="h-12 font-medium">{asset.value}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <Button variant="outline" className="mt-4 h-9 w-full bg-muted dark:bg-muted font-normal">
+          {action}
+          {external ? <ArrowRight className="size-4" /> : <Plus className="size-4" />}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+
+components/web3/charts.tsx
+"use client";
+
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { apyData } from "../../data";
+
+export function PortfolioChart({ data }: { data: any[] }) {
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={data} >
+        <defs>
+          <linearGradient id="portfolioFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.55} />
+            <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid stroke="var(--border)" strokeOpacity={0.25} vertical />
+        <XAxis
+          dataKey="time"
+          axisLine={false}
+          tickLine={false}
+          interval="preserveStartEnd"
+          tick={{ fill: "var(--muted-foreground)", fontSize: 13 }}
+        />
+        <YAxis
+          axisLine={false}
+          tickLine={false}
+          width={54}
+          ticks={[0, 50000, 100000, 150000, 200000, 250000, 300000]}
+          tickFormatter={(value) => `${Number(value) / 1000}K`}
+          tick={{ fill: "var(--muted-foreground)", fontSize: 13 }}
+        />
+        <Area
+          type="linear"
+          dataKey="value"
+          stroke="var(--chart-1)"
+          strokeWidth={4}
+          fill="url(#portfolioFill)"
+          activeDot={false}
+          dot={false}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+export function ApySparkline() {
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={apyData} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
+        <defs>
+          <linearGradient id="apyFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-emerald-400)" stopOpacity={0.45} />
+            <stop offset="100%" stopColor="var(--color-emerald-400)" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <XAxis dataKey="month" hide />
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke="var(--color-emerald-400)"
+          strokeWidth={2}
+          fill="url(#apyFill)"
+          dot={false}
+          activeDot={false}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+
+components/web3/logo-icons.tsx
+export default function LogoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="785"
+      height="506"
+      viewBox="0 0 785 506"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M392.688 104.141C299.504 104.141 291.288 234.316 261.147 234.316C231.007 234.316 230.996 0 121.38 0C-30.726 0 -49.9098 505.63 121.38 505.63C196.742 505.63 218.672 442.598 252.926 442.598C287.179 442.598 322.801 505.63 392.688 505.63C462.575 505.63 496.832 442.598 531.085 442.598C565.339 442.598 587.269 505.63 662.631 505.63C833.921 505.63 814.737 0 662.631 0C553.015 0 553.004 234.316 522.864 234.316C492.723 234.316 485.872 104.141 392.688 104.141Z"
+        fill="currentColor"
+      />
+      <circle cx="515.226" cy="332.977" r="46.5892" fill="black" />
+      <circle cx="268.575" cy="332.976" r="46.5892" fill="black" />
+    </svg>
+  );
+}
+
+
+components/web3/markets-panel.tsx
+import { ArrowUpRight } from "lucide-react";
+import { GoTriangleUp } from "react-icons/go";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AssetBadge } from "./asset-badge";
+import { markets } from "../../data";
+
+export function MarketsPanel() {
+  return (
+    <Card className="rounded-2xl bg-card shadow-priamry dark:bg-muted p-2 ring-0 shadow-primary gap-1">
+      <CardHeader className="flex items-center justify-between px-2 py-0.5">
+        <CardTitle className="text-lg font-medium">Top Markets</CardTitle>
+        <Button variant="ghost" size="sm" className="h-7 gap-2 px-1 text-sm font-normal text-muted-foreground">
+          View all
+          <ArrowUpRight className="size-4" />
+        </Button>
+      </CardHeader>
+      <CardContent className="px-2 bg-muted/20 dark:bg-black rounded-xl h-full shadow-primary">
+        <div className="">
+          {markets.map((market) => (
+            <div key={market.name} className="flex items-center gap-4 py-4">
+              <AssetBadge symbol={market.name} color={market.color} />
+              <span className="flex-1 text-lg font-medium">{market.name}</span>
+              <span className="flex items-center gap-1 text-sm font-medium text-emerald-400">
+                <GoTriangleUp className="size-4 fill-current" />
+                {market.change}
+              </span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+
+components/web3/portfolio-panel.tsx
+import { GoTriangleUp } from "react-icons/go";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PortfolioChart } from "./charts";
+import { portfolioDataRanges } from "../../data";
+
+const ranges = ["1D", "7D", "1M", "All"];
+
+export function PortfolioPanel() {
+  return (
+    <Card className="rounded-2xl ring-0 shadow-primary bg-card dark:bg-muted p-2 xl:col-span-3 gap-2">
+      <Tabs defaultValue="All" className="w-full flex flex-col h-full">
+        <CardHeader className="flex flex-row items-center justify-between p-0">
+          <CardTitle className="text-lg font-medium px-2 truncate line-clamp-1">
+            Portfolio Performance
+          </CardTitle>
+          <TabsList className="bg-transparent gap-2">
+            {ranges.map((range) => (
+              <TabsTrigger
+                key={range}
+                value={range}
+                className="h-7 px-3 text-sm rounded-md data-[state=active]:bg-muted/40 dark:data-[state=active]:bg-black data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground data-[state=active]:shadow-none border-0"
+              >
+                {range}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </CardHeader>
+        <CardContent className="p-2 mt-2 bg-muted/20 dark:bg-card rounded-xl flex-1 shadow-primary overflow-hidden">
+          <div className="px-4 flex-1">
+            <div className="text-3xl font-medium tracking-wide">$84,520</div>
+            <div className="mt-2 flex items-center gap-1 text-sm font-medium text-emerald-400">
+              <GoTriangleUp className="size-4 fill-current" />
+              <span>6.8% this month</span>
+            </div>
+          </div>
+          <div className="h-80 pt-5 relative">
+            {ranges.map((range) => (
+              <TabsContent key={range} value={range} className="absolute inset-0 mt-0 pt-5 data-[state=inactive]:hidden">
+                <PortfolioChart data={portfolioDataRanges[range as keyof typeof portfolioDataRanges]} />
+              </TabsContent>
+            ))}
+          </div>
+        </CardContent>
+      </Tabs>
+    </Card>
+  );
+}
+
+
+components/web3/sidebar.tsx
+import { ChevronDown } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ThemeToggle } from "../ui/theme-toggle";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarSeparator,
+  SidebarTrigger,
+} from '@/components/ui/sidebar';
+import { navSections, utilityItems } from "../../data";
+import { cn } from "@/lib/utils";
+import LogoIcon from "./logo-icons";
+
+export function DashboardSidebar() {
+  return (
+    <Sidebar collapsible="icon" className="overflow-hidden border-r">
+      <SidebarHeader className="p-3">
+        <SidebarMenu>
+          <SidebarMenuItem className="flex items-center gap-2">
+            <SidebarMenuButton
+              asChild
+              size="lg"
+              className="h-11 px-2 group-data-[collapsible=icon]:hidden group-data-[collapsible=icon]:p-0"
+            >
+              <a href="#">
+                <LogoIcon className="text-primary size-8" />
+                <span className="text-lg font-medium">Watermelon</span>
+              </a>
+            </SidebarMenuButton>
+            <SidebarTrigger className=" " />
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+
+      <SidebarContent className="gap-4 p-3">
+        {navSections.map((section) => (
+          <SidebarGroup key={section.title} className="p-0">
+            <SidebarGroupLabel className="h-8 px-1 text-sm">
+              {section.title}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-1">
+                {section.items.map((item) => (
+                  <SidebarMenuItem key={item.label}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={item.active}
+                      tooltip={item.label}
+                      className={cn(
+                        'h-9 gap-3 rounded-lg px-3 text-sm font-medium',
+                        item.active
+                          ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-primary'
+                          : 'text-muted-foreground',
+                      )}
+                    >
+                      <a href="#">
+                        <item.icon
+                          className={cn(
+                            'size-4',
+                            item.active ? 'text-primary' : '',
+                          )}
+                        />
+                        <span>{item.label}</span>
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
+      </SidebarContent>
+      <SidebarSeparator />
+
+      <SidebarFooter className="gap-3 px-3 pb-3">
+        <SidebarMenu className="gap-1">
+          {utilityItems.map((item) => (
+            <SidebarMenuItem key={item.label}>
+              <SidebarMenuButton
+                asChild
+                tooltip={item.label}
+                className="text-muted-foreground h-9 gap-3 rounded-lg px-3 text-sm"
+              >
+                <a href="#">
+                  <item.icon className="size-4" />
+                  <span>{item.label}</span>
+                </a>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+          <SidebarMenuItem className="flex items-center gap-0 group-data-[collapsible=icon]:p-0">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton
+                  tooltip="Connected account"
+                  className="flex h-11 items-center gap-3 rounded-md group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0"
+                >
+                  <Avatar className="size-6 shrink-0">
+                    <AvatarImage
+                      src={'https://assets.watermelon.sh/wm_ben.png'}
+                      className=""
+                    />
+
+                    <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
+                      VP
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="flex-1 overflow-hidden text-left text-sm font-medium text-ellipsis whitespace-nowrap group-data-[collapsible=icon]:hidden">
+                    Vansh Patel
+                  </span>
+                  <ChevronDown className="text-muted-foreground size-4 shrink-0 group-data-[collapsible=icon]:hidden" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                className="w-56"
+                align="end"
+                side="right"
+                sideOffset={16}
+              >
+                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>Profile</DropdownMenuItem>
+                <DropdownMenuItem>Settings</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive">
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <div className="group-data-[collapsible=icon]:hidden">
+              <ThemeToggle />
+            </div>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    </Sidebar>
+  );
+}
+
+
+components/web3/stat-card.tsx
+import { GoTriangleUp, GoTriangleDown } from "react-icons/go";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ApySparkline } from "./charts";
+import { stats } from "../../data";
+import { cn } from "@/lib/utils";
+
+export function StatGrid() {
+  return (
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {stats.map((stat) => (
+        <Card
+          key={stat.label}
+          className="min-h-28 rounded-2xl bg-card py-4 ring-0 shadow-primary dark:bg-muted"
+        >
+          <CardHeader className="flex items-center gap-2 px-4 pb-2">
+            <div
+              className={cn(
+                " rounded-full shadow-[inset_0_1px_8px_1px_rgba(255,255,255,0.6),inset_0_-1px_8px_2px_rgba(0,0,0,0.3)] flex items-center justify-center p-2 ",
+                stat.tone,
+              )}
+            >
+              <stat.icon className={cn("size-5 text-black")} />
+            </div>
+            <CardTitle className="text-sm font-medium">{stat.label}</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4  flex flex-col mt-auto  ">
+            <div className="text-3xl font-nomral tracking-wide ">
+              {stat.value}
+            </div>
+            <div className=" ">
+              {stat.compactChart ? (
+                <div className="mt-2 h-10">
+                  <ApySparkline />
+                </div>
+              ) : (
+                <div
+                  className={cn("mt-2 flex items-center gap-1 text-sm", {
+                    "text-emerald-400": stat.detail.startsWith("+"),
+                    "text-red-400": stat.detail.startsWith("-"),
+                  })}
+                >
+                  {stat.detail.startsWith("+") || stat.detail.startsWith("-") ? (
+                    <>
+                      {stat.detail.startsWith("+") ? (
+                        <GoTriangleUp className="size-4 fill-current" />
+                      ) : (
+                        <GoTriangleDown className="size-4 fill-current" />
+                      )}
+                      <span className="">{stat.detail}</span>
+                    </>
+                  ) : (
+                    <span className="">
+                      {stat.detail.split(/(\d+(?:\.\d+)?)/).map((part, index) => {
+                        if (!part) return null;
+                        return /^\d+(?:\.\d+)?$/.test(part) ? (
+                          <span key={index} className="text-foreground">
+                            {part}
+                          </span>
+                        ) : (
+                          <span key={index} className="text-muted-foreground">
+                            {part}
+                          </span>
+                        );
+                      })}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </section>
+  );
+}
+
+
+components/web3/topbar.tsx
+'use client';
+
+import * as React from 'react';
+import { ArrowUpRight, Plus, Repeat2, Search } from 'lucide-react';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { SidebarTrigger } from '@/components/ui/sidebar';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
+export function DashboardTopbar() {
+  const [network, setNetwork] = React.useState('ethereum');
+
+  return (
+    <header className="flex min-h-16 items-center justify-between gap-4">
+      <div className="flex w-full max-w-sm items-center gap-2">
+        <SidebarTrigger className="shrink-0 lg:hidden" />
+        <div className="relative flex-1">
+          <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+          <Input
+            aria-label="Search assets"
+            className="border-border bg-muted h-9 w-full rounded-lg pl-9 text-sm"
+            placeholder="search assets, pools, transaction..."
+          />
+        </div>
+      </div>
+
+      <div className="hidden items-center gap-2 md:flex">
+        <Select value={network} onValueChange={setNetwork}>
+          <SelectTrigger className="bg-muted min-h-9 w-[210px] gap-3">
+            <SelectValue placeholder="Select Network" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ethereum">
+              <div className="flex items-center gap-2">
+                <Badge className="flex size-5 items-center justify-center rounded-full bg-indigo-500 p-0 text-white">
+                  E
+                </Badge>
+                Ethereum Mainnet
+              </div>
+            </SelectItem>
+            <SelectItem value="polygon">
+              <div className="flex items-center gap-2">
+                <Badge className="flex size-5 items-center justify-center rounded-full bg-purple-500 p-0 text-white">
+                  P
+                </Badge>
+                Polygon
+              </div>
+            </SelectItem>
+            <SelectItem value="arbitrum">
+              <div className="flex items-center gap-2">
+                <Badge className="flex size-5 items-center justify-center rounded-full bg-blue-500 p-0 text-white">
+                  A
+                </Badge>
+                Arbitrum
+              </div>
+            </SelectItem>
+            <SelectItem value="optimism">
+              <div className="flex items-center gap-2">
+                <Badge className="flex size-5 items-center justify-center rounded-full bg-red-500 p-0 text-white">
+                  O
+                </Badge>
+                Optimism
+              </div>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="outline" className="bg-muted h-9">
+          Deposit
+          <Plus className="size-4" />
+        </Button>
+        <Button variant="outline" className="bg-muted h-9">
+          Withdraw
+          <ArrowUpRight className="size-4" />
+        </Button>
+        <Button className="bg-primary text-primary-foreground h-9 px-5 shadow-[inset_0_1px_6px_2px_rgba(255,255,255,0.1),inset_0_-1px_6px_2px_rgba(0,0,0,0.1)]">
+          Swap
+          <Repeat2 className="size-4" />
+        </Button>
+      </div>
+    </header>
+  );
+}
+
+
+dashboard-layout.tsx
+
+import { DashboardSidebar } from './components/web3/sidebar';
+import './dashboard.css';
+
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import type { CSSProperties } from 'react';
+
+export default function DashboardLayout({children}:{children:React.ReactNode}) {
+  return (
+    <SidebarProvider
+      className="web3-dashboard bg-background text-foreground min-h-screen font-sans"
+      style={
+        {
+          '--sidebar-width': 'calc(var(--spacing) * 64)',
+          '--sidebar-width-icon': 'calc(var(--spacing) * 14)',
+        } as CSSProperties
+      }
+    >
+      <DashboardSidebar />
+      <SidebarInset>
+        {children}
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}
+
+
+dashboardView.tsx
+
+import { AssetTableCard } from './components/web3/asset-table-card';
+import { borrowedAssets, netWorthAssets } from './data';
+import { DashboardTopbar } from './components/web3/topbar';
+import { MarketsPanel } from './components/web3/markets-panel';
+import { PortfolioPanel } from './components/web3/portfolio-panel';
+import { StatGrid } from './components/web3/stat-card';
+export default function DashboardView() {
+  return (
+    <main className="flex-1 px-4 pb-7 lg:px-8">
+      <DashboardTopbar />
+      <div className="mx-auto grid gap-4">
+        <StatGrid />
+        <section className="grid gap-3 xl:grid-cols-4">
+          <PortfolioPanel />
+          <MarketsPanel />
+        </section>
+        <section className="grid gap-3 xl:grid-cols-2">
+          <AssetTableCard
+            title="Net Worth"
+            assets={netWorthAssets}
+            action="Deposit"
+            valueLabel="Value"
+          />
+          <AssetTableCard
+            title="Borrowed Assets"
+            assets={borrowedAssets}
+            action="Borrow More"
+            valueLabel="APY"
+            external
+          />
+        </section>
+      </div>
+    </main>
+  );
+}
+```

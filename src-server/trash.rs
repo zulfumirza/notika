@@ -109,11 +109,11 @@ pub async fn move_note_to_trash(
     note: &str,
 ) -> Result<TrashItem, VaultError> {
     let resolved = resolve_note_path(data_dir, project, note).await?;
-    if !resolved.file_path.is_file() {
+    if !resolved.note_path.is_file() {
         return Err(VaultError::not_found("Silinecek not dosyası bulunamadı."));
     }
 
-    let meta = tokio::fs::metadata(&resolved.file_path)
+    let meta = tokio::fs::metadata(&resolved.note_path)
         .await
         .map_err(|_| VaultError::internal("Dosya bilgileri okunamadı."))?;
     let size = meta.len();
@@ -125,7 +125,7 @@ pub async fn move_note_to_trash(
     let trash_id = format!("note_{}_{}", Utc::now().timestamp_millis(), &resolved.note_name);
     let target_trash_path = items_dir.join(&trash_id);
 
-    tokio::fs::rename(&resolved.file_path, &target_trash_path)
+    tokio::fs::rename(&resolved.note_path, &target_trash_path)
         .await
         .map_err(|_| VaultError::internal("Not çöp kutusuna taşınamadı."))?;
 
@@ -161,12 +161,12 @@ pub async fn move_project_to_trash(
     data_dir: &Path,
     project: &str,
 ) -> Result<TrashItem, VaultError> {
-    let resolved = resolve_project_path(data_dir, project).await?;
-    if !resolved.dir_path.is_dir() {
+    let (project_name, dir_path) = resolve_project_path(data_dir, project).await?;
+    if !dir_path.is_dir() {
         return Err(VaultError::not_found("Silinecek proje klasörü bulunamadı."));
     }
 
-    let (note_count, total_size) = calculate_project_stats(&resolved.dir_path)
+    let (note_count, total_size) = calculate_project_stats(&dir_path)
         .await
         .map_err(|_| VaultError::internal("Proje istatistikleri okunamadı."))?;
 
@@ -174,15 +174,15 @@ pub async fn move_project_to_trash(
         .await
         .map_err(|_| VaultError::internal("Çöp kutusu dizini açılamadı."))?;
 
-    let trash_id = format!("project_{}_{}", Utc::now().timestamp_millis(), &resolved.project_name);
+    let trash_id = format!("project_{}_{}", Utc::now().timestamp_millis(), &project_name);
     let target_trash_path = items_dir.join(&trash_id);
 
-    tokio::fs::rename(&resolved.dir_path, &target_trash_path)
+    tokio::fs::rename(&dir_path, &target_trash_path)
         .await
         .map_err(|_| VaultError::internal("Proje çöp kutusuna taşınamadı."))?;
 
-    let project_appearance = take_project_appearance(data_dir, &resolved.project_name).await;
-    let lock_hashes_map = take_project_lock_hashes(data_dir, &resolved.project_name).await;
+    let project_appearance = take_project_appearance(data_dir, &project_name).await;
+    let lock_hashes_map = take_project_lock_hashes(data_dir, &project_name).await;
     let lock_hashes = if lock_hashes_map.is_empty() {
         None
     } else {
@@ -193,9 +193,9 @@ pub async fn move_project_to_trash(
     let stored_item = StoredTrashItem {
         id: trash_id.clone(),
         kind: "project".to_string(),
-        name: resolved.project_name.clone(),
-        title: resolved.project_name.clone(),
-        project: resolved.project_name.clone(),
+        name: project_name.clone(),
+        title: project_name.clone(),
+        project: project_name.clone(),
         deleted_at: Utc::now().to_rfc3339(),
         size: total_size,
         note_count: Some(note_count),

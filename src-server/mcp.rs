@@ -463,7 +463,7 @@ pub async fn handle_mcp_request(
                     let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
                     let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
 
-                    match create_note(data_dir, project, name, Some(content), None, None).await {
+                    match create_note(data_dir, project, name, Some(content), None).await {
                         Ok(doc) => Ok(Some(serde_json::json!({
                             "jsonrpc": "2.0",
                             "id": id,

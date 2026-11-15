@@ -53,6 +53,27 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: cargo test --release --locked --target ${{ matrix.target }}
 
+      - name: Smoke test API
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          set -euxo pipefail
+          export DATA_DIR=$(mktemp -d) PORT=3999
+          ./target/${{ matrix.target }}/release/notika &
+          for i in $(seq 1 30); do curl -sf localhost:3999/api/health && break; sleep 1; done
+          B=localhost:3999/api
+          curl -sf $B/health | grep -q '"ok":true'
+          curl -sf localhost:3999/ | grep -qi '<div id="root">'
+          curl -sf -X POST $B/projects -H 'content-type: application/json' -d '{"name":"Smoke"}' | grep -q '"Smoke"'
+          curl -sf -X POST $B/notes -H 'content-type: application/json' -d '{"project":"Smoke","name":"hello","content":"# Merhaba dünya"}' | grep -q 'hello'
+          curl -sf "$B/notes?project=Smoke&note=hello.md" | grep -q 'Merhaba'
+          curl -sf -X PUT $B/notes -H 'content-type: application/json' -d '{"project":"Smoke","name":"hello.md","content":"guncel icerik"}' | grep -q 'guncel'
+          curl -sf "$B/search?q=guncel" | grep -q 'hello'
+          curl -sf $B/tree | grep -q 'Smoke'
+          curl -sf -X DELETE "$B/notes?project=Smoke&note=hello.md" | grep -q '"ok":true'
+          curl -sf $B/trash | grep -q 'hello'
+          ls -R "$DATA_DIR"
+          kill %1
+
       - name: Package
         shell: bash
         run: |

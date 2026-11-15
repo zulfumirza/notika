@@ -39,11 +39,12 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Registers rustc problem matchers so compile errors show up as annotations.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          targets: ${{ matrix.target }}
-
-      - uses: Swatinem/rust-cache@v2
+          toolchain: stable
+          target: ${{ matrix.target }}
+          rustflags: ''
 
       - name: cargo build
         run: cargo build --release --locked --target ${{ matrix.target }}

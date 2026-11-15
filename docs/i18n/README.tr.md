@@ -8,9 +8,13 @@
 
 [![MIT Lisansı](https://img.shields.io/badge/Lisans-MIT-34D399.svg?style=for-the-badge)](../../LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](../../tsconfig.json)
+[![Rust](https://img.shields.io/badge/Rust-Axum-DEA584?style=for-the-badge&logo=rust&logoColor=white)](../../Cargo.toml)
 [![MCP Hazır](https://img.shields.io/badge/MCP-JSON--RPC%202.0-10B981?style=for-the-badge)](../../server/mcp.ts)
 
 </div>
+
+> [!IMPORTANT]
+> 🦀 **Rust ile yeniden yazıldı.** Notika'nın sunucu tarafı TypeScript/Express'ten **Rust (Axum + Tokio)** ile yeniden yazıldı. Yeni sunucu `src-server/` klasöründedir ve React arayüzü içine gömülü tek bir çalıştırılabilir dosya olarak derlenir (`cargo build --release`). Eski TypeScript sunucusu (`server/`, `server.ts`) geçiş süresince yalnızca referans olarak tutulmaktadır.
 
 ---
 

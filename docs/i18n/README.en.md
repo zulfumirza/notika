@@ -8,9 +8,13 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-34D399.svg?style=for-the-badge)](../../LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](../../tsconfig.json)
+[![Rust](https://img.shields.io/badge/Rust-Axum-DEA584?style=for-the-badge&logo=rust&logoColor=white)](../../Cargo.toml)
 [![MCP Ready](https://img.shields.io/badge/MCP-JSON--RPC%202.0-10B981?style=for-the-badge)](../../server/mcp.ts)
 
 </div>
+
+> [!IMPORTANT]
+> 🦀 **Rewritten in Rust.** Notika's backend has been rewritten from TypeScript/Express to **Rust (Axum + Tokio)**. The new server lives in `src-server/` and builds into a single binary with the React frontend embedded (`cargo build --release`). The old TypeScript server (`server/`, `server.ts`) is kept only as a reference during the migration.
 
 ---
 

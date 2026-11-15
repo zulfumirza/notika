@@ -10,6 +10,9 @@
 
 </div>
 
+> [!IMPORTANT]
+> 🦀 **已使用 Rust 重写。** Notika 的后端已从 TypeScript/Express 重写为 **Rust (Axum + Tokio)**。新服务器位于 `src-server/`，编译为内嵌 React 前端的单一可执行文件（`cargo build --release`）。旧的 TypeScript 服务器（`server/`、`server.ts`）仅在迁移期间作为参考保留。
+
 ---
 
 ### 🌐 语言 / Languages

@@ -10,6 +10,9 @@
 
 </div>
 
+> [!IMPORTANT]
+> 🦀 **Переписано на Rust.** Серверная часть Notika переписана с TypeScript/Express на **Rust (Axum + Tokio)**. Новый сервер находится в `src-server/` и собирается в один исполняемый файл со встроенным React-фронтендом (`cargo build --release`). Старый TypeScript-сервер (`server/`, `server.ts`) сохранён только для справки на время миграции.
+
 ---
 
 ### 🌐 Языки / Languages

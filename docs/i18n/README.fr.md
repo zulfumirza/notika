@@ -10,6 +10,9 @@
 
 </div>
 
+> [!IMPORTANT]
+> 🦀 **Réécrit en Rust.** Le backend de Notika a été réécrit de TypeScript/Express vers **Rust (Axum + Tokio)**. Le nouveau serveur se trouve dans `src-server/` et se compile en un binaire unique embarquant le frontend React (`cargo build --release`). L'ancien serveur TypeScript (`server/`, `server.ts`) est conservé uniquement comme référence pendant la migration.
+
 ---
 
 ### 🌐 Langues / Languages

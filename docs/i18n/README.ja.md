@@ -10,6 +10,9 @@
 
 </div>
 
+> [!IMPORTANT]
+> 🦀 **Rust で書き直されました。** Notika のバックエンドは TypeScript/Express から **Rust (Axum + Tokio)** に書き直されました。新しいサーバーは `src-server/` にあり、React フロントエンドを埋め込んだ単一バイナリとしてビルドされます (`cargo build --release`)。旧 TypeScript サーバー (`server/`, `server.ts`) は移行期間中の参照用としてのみ残されています。
+
 ---
 
 ### 🌐 言語 / Languages

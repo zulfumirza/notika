@@ -10,6 +10,9 @@
 
 </div>
 
+> [!IMPORTANT]
+> 🦀 **أُعيدت كتابته بلغة Rust.** تمت إعادة كتابة الواجهة الخلفية لـ Notika من TypeScript/Express إلى **Rust (Axum + Tokio)**. يوجد الخادم الجديد في `src-server/` ويُبنى كملف تنفيذي واحد مع تضمين واجهة React (`cargo build --release`). يُحتفظ بخادم TypeScript القديم (`server/`, `server.ts`) كمرجع فقط أثناء الترحيل.
+
 ---
 
 ### 🌐 اللغات / Languages
